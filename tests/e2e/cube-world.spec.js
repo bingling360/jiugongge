@@ -95,7 +95,7 @@ test("旋转边上的远程门保留钥匙语义，第二次输入才真正跨�
     expect(state.route).toBe("right");
 });
 
-test("跨旋转边后地图对齐入口，屏幕方向、点击寻路和读档保持同一视角", async ({ page }) => {
+test("跨旋转边后只重排地图格，素材保持正向且没有旋转动画", async ({ page }) => {
     await bootGame(page);
     await changeFloor(page, "MT4", { x: 12, y: 9, direction: "right" });
     await page.evaluate(() => {
@@ -111,9 +111,20 @@ test("跨旋转边后地图对齐入口，屏幕方向、点击寻路和读档�
         loc: core.clone(core.status.hero.loc),
         quarter: core.plugin.cubeWorld.getViewQuarter(),
         screenDirection: core.plugin.cubeWorld.logicalToScreenDirection(core.getHeroLoc("direction")),
-        stageQuarter: document.getElementById("cube-world-stage").dataset.viewQuarter,
+        heroScreenCell: core.plugin.cubeWorld.logicalCellToScreen(core.getHeroLoc("x"), core.getHeroLoc("y")),
+        stageExists: !!document.getElementById("cube-world-stage"),
         bgParent: document.getElementById("bg").parentElement.id,
         uiParent: document.getElementById("ui").parentElement.id,
+        worldCanvasStyles: ["bg", "event", "hero", "event2", "fg", "damage", "animate"].map((id) => {
+            const node = document.getElementById(id);
+            const style = getComputedStyle(node);
+            const matrix = style.transform === "none" ? new DOMMatrix() : new DOMMatrix(style.transform);
+            return {
+                id, inlineTransform: node.style.transform,
+                rotationTerms: [matrix.b, matrix.c],
+                transitionDuration: style.transitionDuration
+            };
+        }),
         dynamicParents: (() => {
             const world = core.createCanvas("cube-world-layer-probe", 0, 0, 32, 32, 80).canvas;
             const screen = core.createCanvas("cube-screen-layer-probe", 0, 0, 32, 32, 140).canvas;
@@ -125,13 +136,49 @@ test("跨旋转边后地图对齐入口，屏幕方向、点击寻路和读档�
     }));
     expect(state).toMatchObject({
         floorId: "MT3", loc: { x: 3, y: 0, direction: "down" },
-        quarter: 3, screenDirection: "right", stageQuarter: "3",
-        bgParent: "cube-world-stage", uiParent: "gameDraw",
-        dynamicParents: ["cube-world-stage", "gameDraw"]
+        quarter: 3, screenDirection: "right", heroScreenCell: { x: 0, y: 9 },
+        stageExists: false, bgParent: "gameDraw", uiParent: "gameDraw",
+        dynamicParents: ["gameDraw", "gameDraw"]
     });
-    await expect.poll(() => page.evaluate(() => core.plugin.cubeWorld.isViewTransitioning())).toBe(false);
+    expect(state.worldCanvasStyles.every((one) => !one.inlineTransform.includes("rotate"))).toBe(true);
+    expect(state.worldCanvasStyles.every((one) => one.rotationTerms.every((value) => Math.abs(value) < 1e-9))).toBe(true);
+    expect(state.worldCanvasStyles.every((one) => one.transitionDuration === "0s")).toBe(true);
 
-    // 画面已经逆时针转 90 度；继续按屏幕“右”应换算成地图逻辑“下”。
+    // 用四角颜色均不同的测试图块验证底层绘制原语：逻辑格 (4,2)
+    // 被放到屏幕格 (2,8)，而 32x32 像素顺序逐字节不变。
+    const pixels = await page.evaluate(() => {
+        const source = document.createElement("canvas");
+        source.width = source.height = 32;
+        const sourceCtx = source.getContext("2d");
+        sourceCtx.fillStyle = "#ff0000";
+        sourceCtx.fillRect(0, 0, 16, 16);
+        sourceCtx.fillStyle = "#00ff00";
+        sourceCtx.fillRect(16, 0, 16, 16);
+        sourceCtx.fillStyle = "#0000ff";
+        sourceCtx.fillRect(0, 16, 16, 16);
+        sourceCtx.fillStyle = "#ffff00";
+        sourceCtx.fillRect(16, 16, 16, 16);
+
+        core.clearMap("event");
+        core.maps._drawBlockInfo({
+            image: source, posX: 0, posY: 0, height: 32,
+            opacity: null, filter: null, faceIds: {}
+        }, 4, 2, "event");
+        const target = core.plugin.cubeWorld.logicalCellToScreen(4, 2);
+        const actual = core.canvas.event.getImageData(target.x * 32, target.y * 32, 32, 32).data;
+        const expected = sourceCtx.getImageData(0, 0, 32, 32).data;
+        const canonical = core.canvas.event.getImageData(4 * 32, 2 * 32, 32, 32).data;
+        let equal = actual.length === expected.length;
+        for (let i = 0; equal && i < actual.length; i++) equal = actual[i] === expected[i];
+        const canonicalAlpha = Array.from(canonical).filter((_, index) => index % 4 === 3)
+            .reduce((sum, value) => sum + value, 0);
+        core.redrawMap();
+        core.drawHero();
+        return { target, equal, canonicalAlpha };
+    });
+    expect(pixels).toEqual({ target: { x: 2, y: 8 }, equal: true, canonicalAlpha: 0 });
+
+    // 地图布局处于四分之三转朝向；继续按屏幕“右”应换算成逻辑“下”。
     await page.keyboard.press("ArrowRight");
     await expect.poll(() => page.evaluate(() => core.getHeroLoc("y"))).toBe(1);
     state = await page.evaluate(() => ({
@@ -151,12 +198,28 @@ test("跨旋转边后地图对齐入口，屏幕方向、点击寻路和读档�
         const data = core.saveData();
         const quarter = data.hero.flags.__cubeViewQuarter__;
         core.removeFlag("__cubeViewQuarter__");
-        core.plugin.cubeWorld.syncViewRotation(false);
+        core.plugin.cubeWorld.syncMapOrientation();
         core.loadData(data, () => resolve(quarter));
     }));
     expect(savedQuarter).toBe(3);
     await expect.poll(() => page.evaluate(() => core.plugin.cubeWorld.getViewQuarter())).toBe(3);
-    await expect(page.locator("#cube-world-stage")).toHaveAttribute("data-view-quarter", "3");
+    await expect.poll(() => page.evaluate(() =>
+        core.plugin.cubeWorld.logicalCellToScreen(core.getHeroLoc("x"), core.getHeroLoc("y"))
+    )).toEqual({ x: 2, y: 9 });
+    await expect(page.locator("#cube-world-stage")).toHaveCount(0);
+
+    // 增量拾取/删除也必须清理映射后的屏幕格，不能在原逻辑位置误清。
+    const removedItem = await page.evaluate(() => {
+        const cell = core.plugin.cubeWorld.logicalCellToScreen(4, 0);
+        const alphaAt = () => Array.from(core.canvas.event.getImageData(
+            cell.x * 32, cell.y * 32, 32, 32
+        ).data).filter((_, index) => index % 4 === 3).reduce((sum, value) => sum + value, 0);
+        const before = alphaAt();
+        core.removeBlock(4, 0);
+        return { before, after: alphaAt() };
+    });
+    expect(removedItem.before).toBeGreaterThan(0);
+    expect(removedItem.after).toBe(0);
 });
 
 test("跨面怪物胜利后进入目标格，块级元数据与远程战斗楼层不会错位", async ({ page }) => {

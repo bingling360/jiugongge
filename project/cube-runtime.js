@@ -20,13 +20,10 @@
         var viewerOverlay = null;
         var viewerFrame = null;
         var mobilePad = null;
-        var worldStage = null;
-        var viewAngle = 0;
         var pendingViewQuarter = null;
-        var viewTransitionTimer = null;
-        var viewTransitioning = false;
+        var mapRenderDepth = 0;
+        var mapRendererInstalled = false;
         var VIEW_QUARTER_FLAG = "__cubeViewQuarter__";
-        var VIEW_TRANSITION_TIME = 180;
         var KEY_DIRECTIONS = { 37: "left", 38: "up", 39: "right", 40: "down" };
 
         function state(floorId, x, y, direction) {
@@ -407,96 +404,360 @@
             return quarter;
         }
 
-        function canonicalViewAngle(quarter) {
-            quarter = CubeWorld.normalizeQuarter(quarter);
-            return quarter === 3 ? -90 : quarter * 90;
+        function currentFaceSize() {
+            var floor = core.floors[core.status && core.status.floorId] || {};
+            return floor.width || core.__SIZE__ || 13;
         }
 
-        function nearestViewAngle(quarter) {
-            var target = canonicalViewAngle(quarter);
-            while (target - viewAngle > 180) target -= 360;
-            while (target - viewAngle <= -180) target += 360;
-            return target;
+        function logicalCellToScreen(x, y, quarter) {
+            if (quarter == null) quarter = getViewQuarter();
+            return CubeWorld.logicalToScreenCell(x, y, currentFaceSize(), quarter);
         }
 
-        function isWorldDynamicCanvas(canvas) {
-            var zIndex = parseInt(canvas && canvas.style && canvas.style.zIndex, 10);
-            return !isNaN(zIndex) && zIndex < 125;
+        function screenCellToLogical(x, y, quarter) {
+            if (quarter == null) quarter = getViewQuarter();
+            return CubeWorld.screenToLogicalCell(x, y, currentFaceSize(), quarter);
         }
 
-        function placeDynamicCanvas(canvas) {
-            if (!canvas || !worldStage || !core.dom || !core.dom.gameDraw) return;
-            if (isWorldDynamicCanvas(canvas)) {
-                if (canvas.parentNode !== worldStage) worldStage.appendChild(canvas);
-            } else if (canvas.parentNode === worldStage) {
-                core.dom.gameDraw.appendChild(canvas);
-            }
+        // 32px 格子左上角的连续映射。它只旋转运动向量和格子位置，传给
+        // drawImage 的源像素与目标宽高不变，因此人物素材始终保持正向。
+        function mapMovingCellTopLeft(px, py) {
+            var quarter = getViewQuarter();
+            var length = currentFaceSize() * 32;
+            if (quarter === 1) return { x: length - 32 - py, y: px };
+            if (quarter === 2) return { x: length - 32 - px, y: length - 32 - py };
+            if (quarter === 3) return { x: py, y: length - 32 - px };
+            return { x: px, y: py };
         }
 
-        function setupWorldStage() {
+        // 显伤、动画中心和楼层贴图的格内偏移属于屏幕排版，不应随地图
+        // 转成侧向；只替换它们所在的格子。
+        function mapPixelKeepingCellOffset(px, py) {
+            var size = currentFaceSize();
+            var cellX = Math.max(0, Math.min(size - 1, Math.floor(px / 32)));
+            var cellY = Math.max(0, Math.min(size - 1, Math.floor(py / 32)));
+            var screen = CubeWorld.logicalToScreenCell(cellX, cellY, size, getViewQuarter());
+            return { x: screen.x * 32 + px - cellX * 32, y: screen.y * 32 + py - cellY * 32 };
+        }
+
+        function hasMapOrientation() {
+            return !!(core.status && isFace(core.status.floorId) && getViewQuarter() !== 0);
+        }
+
+        function setupMapPresentation() {
             if (!core.dom || !core.dom.gameDraw) return null;
-            worldStage = document.getElementById("cube-world-stage");
-            if (!worldStage) {
-                worldStage = document.createElement("div");
-                worldStage.id = "cube-world-stage";
-                worldStage.setAttribute("aria-hidden", "true");
-                worldStage.style.cssText = "position:absolute;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;transform-origin:50% 50%;will-change:transform";
-                core.dom.gameDraw.insertBefore(worldStage, core.dom.gameDraw.firstChild);
+            // 兼容热更新前曾创建的旧容器，但正常启动不会再创建任何旋转层。
+            var oldStage = document.getElementById("cube-world-stage");
+            if (oldStage) {
+                while (oldStage.firstChild) core.dom.gameDraw.insertBefore(oldStage.firstChild, oldStage);
+                oldStage.remove();
             }
             ["gif", "gif2", "bg", "event", "hero", "event2", "fg", "damage", "animate"].forEach(function (id) {
                 var node = document.getElementById(id);
-                if (node && node.parentNode !== worldStage) worldStage.appendChild(node);
+                if (!node) return;
+                node.style.transform = "";
+                node.style.transition = "";
+                node.style.transformOrigin = "";
+                node.style.willChange = "";
             });
-            Object.keys(core.dymCanvas || {}).forEach(function (name) {
-                placeDynamicCanvas(core.dymCanvas[name].canvas);
-            });
-            applyViewQuarter(getViewQuarter(), false);
-            return worldStage;
+            return core.dom.gameDraw;
         }
 
-        function prefersReducedMotion() {
-            return !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+        function mapBlockInfoDirection(blockInfo) {
+            if (!blockInfo || !blockInfo.faceIds || !Object.keys(blockInfo.faceIds).length) return blockInfo;
+            var screenDirection = CubeWorld.logicalToScreenDirection(blockInfo.face, getViewQuarter());
+            var screenId = blockInfo.faceIds[screenDirection];
+            var icons = core.material.icons[blockInfo.cls] || {};
+            if (screenId == null || icons[screenId] == null) return blockInfo;
+            return Object.assign({}, blockInfo, {
+                id: screenId,
+                face: screenDirection,
+                posY: icons[screenId]
+            });
         }
 
-        function applyViewQuarter(quarter, animate) {
-            quarter = CubeWorld.normalizeQuarter(quarter);
-            if (!worldStage) {
-                viewAngle = canonicalViewAngle(quarter);
-                viewTransitioning = false;
-                return quarter;
-            }
+        function mapContext(ctx) {
+            return typeof ctx === "string" ? core.canvas[ctx] : ctx;
+        }
 
-            clearTimeout(viewTransitionTimer);
-            var target = animate ? nearestViewAngle(quarter) : canonicalViewAngle(quarter);
-            animate = !!animate && target !== viewAngle && !prefersReducedMotion() && !core.isReplaying();
-            worldStage.style.transition = animate ? "transform " + VIEW_TRANSITION_TIME + "ms ease-out" : "none";
-            worldStage.style.transform = "rotate(" + target + "deg)";
-            worldStage.dataset.viewQuarter = String(quarter);
-            worldStage.dataset.viewAngle = String(target);
-            viewAngle = target;
-            viewTransitioning = animate;
+        function isMapContext(ctx) {
+            var actual = mapContext(ctx);
+            return ["bg", "bg2", "event", "event2", "fg", "fg2"].some(function (name) {
+                return core.canvas[name] && actual === core.canvas[name];
+            });
+        }
 
-            if (animate) {
-                viewTransitionTimer = setTimeout(function () {
-                    var normalized = canonicalViewAngle(quarter);
-                    viewTransitioning = false;
-                    if (!worldStage || worldStage.dataset.viewQuarter !== String(quarter)) return;
-                    worldStage.style.transition = "none";
-                    worldStage.style.transform = "rotate(" + normalized + "deg)";
-                    worldStage.dataset.viewAngle = String(normalized);
-                    viewAngle = normalized;
-                }, VIEW_TRANSITION_TIME + 24);
+        function shouldMapBlockContext(ctx) {
+            return hasMapOrientation() && (mapRenderDepth > 0 || isMapContext(ctx));
+        }
+
+        function runMapRender(active, owner, func, args) {
+            if (!active) return func.apply(owner, args);
+            mapRenderDepth++;
+            try {
+                return func.apply(owner, args);
+            } finally {
+                mapRenderDepth--;
             }
+        }
+
+        function configDrawsOnMap(config) {
+            if (config == null) return true;
+            if (typeof config === "string" || config.canvas) return false;
+            return config.ctx == null;
+        }
+
+        function installMapRenderer() {
+            if (mapRendererInstalled) return;
+            mapRendererInstalled = true;
+
+            var originalBgDraw = core.maps._drawBg_draw;
+            core.maps._drawBg_draw = function (floorId, toDrawCtx, cacheCtx, config) {
+                return runMapRender(!!(config && config.onMap && isFace(floorId)), this,
+                    originalBgDraw, arguments);
+            };
+
+            var originalFgDraw = core.maps._drawFg_draw;
+            core.maps._drawFg_draw = function (floorId, toDrawCtx, cacheCtx, config) {
+                return runMapRender(!!(config && config.onMap && isFace(floorId)), this,
+                    originalFgDraw, arguments);
+            };
+
+            var originalDrawEvents = core.maps.drawEvents;
+            core.maps.drawEvents = function (floorId, blocks, config) {
+                floorId = floorId || core.status.floorId;
+                return runMapRender(isFace(floorId) && configDrawsOnMap(config), this,
+                    originalDrawEvents, arguments);
+            };
+
+            var canonicalDrawingCell = null;
+            var originalDrawBlockInfo = core.maps._drawBlockInfo;
+            core.maps._drawBlockInfo = function (blockInfo, x, y, ctx) {
+                if (!shouldMapBlockContext(ctx)) return originalDrawBlockInfo.apply(this, arguments);
+                var screen = logicalCellToScreen(x, y);
+                var previous = canonicalDrawingCell;
+                canonicalDrawingCell = { x: x, y: y };
+                try {
+                    return originalDrawBlockInfo.call(this, mapBlockInfoDirection(blockInfo), screen.x, screen.y, ctx);
+                } finally {
+                    canonicalDrawingCell = previous;
+                }
+            };
+
+            var originalDrawBlockInfoBgFg = core.maps._drawBlockInfo_bgfg;
+            core.maps._drawBlockInfo_bgfg = function (blockInfo, name, x, y, ctx) {
+                if (!shouldMapBlockContext(ctx)) return originalDrawBlockInfoBgFg.apply(this, arguments);
+                var screen = logicalCellToScreen(x, y);
+                var previous = canonicalDrawingCell;
+                canonicalDrawingCell = { x: x, y: y };
+                try {
+                    return originalDrawBlockInfoBgFg.call(this, mapBlockInfoDirection(blockInfo), name,
+                        screen.x, screen.y, ctx);
+                } finally {
+                    canonicalDrawingCell = previous;
+                }
+            };
+
+            var originalShouldBlurFg = core.maps._drawBlockInfo_shouldBlurFg;
+            core.maps._drawBlockInfo_shouldBlurFg = function (x, y) {
+                if (canonicalDrawingCell) return originalShouldBlurFg.call(this,
+                    canonicalDrawingCell.x, canonicalDrawingCell.y);
+                return originalShouldBlurFg.apply(this, arguments);
+            };
+
+            // 引擎原版的删除逻辑会直接按逻辑像素清空 event/event2；在离散
+            // 朝向下会清错屏幕格。小地图固定 13x13，删除时完整重绘既可靠
+            // 又能同时清掉高图块、滤镜和显伤残影。
+            var originalRemoveBlockFromMap = core.maps._removeBlockFromMap;
+            core.maps._removeBlockFromMap = function (floorId, block) {
+                if (!hasMapOrientation() || floorId !== core.status.floorId) {
+                    return originalRemoveBlockFromMap.apply(this, arguments);
+                }
+                var screen = logicalCellToScreen(block.x, block.y);
+                core.removeGlobalAnimate(block.x, block.y);
+                [
+                    "_bigImage_header_" + block.x + "_" + block.y,
+                    "_bigImage_body_" + block.x + "_" + block.y,
+                    "_bigImage_header_" + screen.x + "_" + screen.y,
+                    "_bigImage_body_" + screen.x + "_" + screen.y
+                ].forEach(function (name) { core.deleteCanvas(name); });
+                core.redrawMap();
+                core.updateStatusBar();
+            };
+
+            // Autotile 先按规范坐标拼好四个子块，再只平移到目标屏幕格；
+            // 不对拼好的纹理做 canvas.rotate。
+            var originalDrawAutotile = core.maps._drawAutotile;
+            core.maps._drawAutotile = function (ctx, mapArr, block, size, left, top, status, onMap) {
+                if (!onMap || !shouldMapBlockContext(ctx)) return originalDrawAutotile.apply(this, arguments);
+                var actual = mapContext(ctx);
+                if (!actual || !actual.save) return originalDrawAutotile.apply(this, arguments);
+                var screen = logicalCellToScreen(block.x, block.y);
+                actual.save();
+                actual.translate((screen.x - block.x) * size, (screen.y - block.y) * size);
+                try {
+                    return originalDrawAutotile.apply(this, arguments);
+                } finally {
+                    actual.restore();
+                }
+            };
+
+            var originalAutotileAnimate = core.maps._drawAutotileAnimate;
+            core.maps._drawAutotileAnimate = function (block, animate) {
+                if (!hasMapOrientation()) return originalAutotileAnimate.apply(this, arguments);
+                var screen = logicalCellToScreen(block.x, block.y);
+                var cv = block.name ? core.canvas[block.name] : core.canvas.event;
+                var px = 32 * screen.x - 32 * core.bigmap.posX;
+                var py = 32 * screen.y - 32 * core.bigmap.posY;
+                cv.clearRect(px, py, 32, 32);
+                var alpha = null;
+                if (block.opacity != null) alpha = core.setAlpha(cv, block.opacity);
+                core.setFilter(cv, block.filter);
+                if (block.name) {
+                    if (block.name === "bg") core.drawImage("bg", core.material.groundCanvas.canvas, px, py);
+                    this._drawAutotile(cv, this._getBgFgMapArray(block.name), block, 32, 0, 0, animate, true);
+                } else {
+                    this._drawAutotile(cv, this.getMapArray(), block, 32, 0, 0, animate, true);
+                }
+                core.setFilter(cv, null);
+                if (alpha != null) core.setAlpha(cv, alpha);
+            };
+
+            var originalFloorImage = core.maps._drawFloorImage;
+            core.maps._drawFloorImage = function (ctx, name, one, image, currStatus, onMap) {
+                if (!onMap || !hasMapOrientation()) return originalFloorImage.apply(this, arguments);
+                var screen = mapPixelKeepingCellOffset(one.x || 0, one.y || 0);
+                var mapped = Object.assign({}, one, { x: screen.x, y: screen.y });
+                return originalFloorImage.call(this, ctx, name, mapped, image, currStatus, onMap);
+            };
+
+            var originalFloorGif = core.maps._drawFloorImages_gif;
+            core.maps._drawFloorImages_gif = function (image, dx, dy) {
+                if (!hasMapOrientation()) return originalFloorGif.apply(this, arguments);
+                var screen = mapPixelKeepingCellOffset(dx, dy);
+                return originalFloorGif.call(this, image, screen.x, screen.y);
+            };
+
+            var originalHeroDrawObjects = core.control._drawHero_getDrawObjs;
+            core.control._drawHero_getDrawObjs = function (direction, x, y, status, offset) {
+                var blocks = originalHeroDrawObjects.apply(this, arguments);
+                if (!hasMapOrientation()) return blocks;
+                blocks.forEach(function (block) {
+                    var screen = mapMovingCellTopLeft(block.posx, block.posy);
+                    block.posx = screen.x;
+                    block.posy = screen.y;
+                    var logicalDirection = block.index === 0 ? direction :
+                        ((core.status.hero.followers[block.index - 1] || {}).direction);
+                    var screenDirection = CubeWorld.logicalToScreenDirection(logicalDirection, getViewQuarter());
+                    if (screenDirection && core.material.icons.hero[screenDirection]) {
+                        block.heroIcon = core.material.icons.hero[screenDirection];
+                    }
+                });
+                return blocks.sort(function (a, b) {
+                    return a.posy === b.posy ? b.index - a.index : a.posy - b.posy;
+                });
+            };
+
+            // 移动、跳跃、淡入淡出图块使用独立动态画布；只映射画布位置
+            // 并选择正常的屏幕方向帧，画布里的素材像素依旧不旋转。
+            var originalMoveDetachedBlock = core.maps._moveDetachedBlock;
+            core.maps._moveDetachedBlock = function (blockInfo, nowX, nowY, opacity, canvases) {
+                if (!hasMapOrientation()) return originalMoveDetachedBlock.apply(this, arguments);
+                var screen = mapMovingCellTopLeft(nowX, nowY);
+                return originalMoveDetachedBlock.call(this, mapBlockInfoDirection(blockInfo),
+                    screen.x, screen.y, opacity, canvases);
+            };
+
+            var originalDamageDraw = core.control._drawDamage_draw;
+            core.control._drawDamage_draw = function (ctx, onMap) {
+                if (!onMap || !hasMapOrientation() || !core.status.damage) {
+                    return originalDamageDraw.apply(this, arguments);
+                }
+                var data = core.status.damage.data;
+                var extraData = core.status.damage.extraData;
+                var mapEntry = function (one) {
+                    var screen = mapPixelKeepingCellOffset(one.px, one.py);
+                    return Object.assign({}, one, { px: screen.x, py: screen.y });
+                };
+                core.status.damage.data = data.map(mapEntry);
+                core.status.damage.extraData = extraData.map(mapEntry);
+                try {
+                    return originalDamageDraw.apply(this, arguments);
+                } finally {
+                    core.status.damage.data = data;
+                    core.status.damage.extraData = extraData;
+                }
+            };
+
+            var originalAnimateFrame = core.maps._drawAnimateFrame;
+            core.maps._drawAnimateFrame = function (name, animate, centerX, centerY, index) {
+                if (!hasMapOrientation() || name !== "animate") return originalAnimateFrame.apply(this, arguments);
+                var screen = mapPixelKeepingCellOffset(centerX, centerY);
+                return originalAnimateFrame.call(this, name, animate, screen.x, screen.y, index);
+            };
+
+            var originalDrawRoute = core.control._setAutomaticRoute_drawRoute;
+            core.control._setAutomaticRoute_drawRoute = function (moveStep) {
+                if (!hasMapOrientation()) return originalDrawRoute.apply(this, arguments);
+                core.status.automaticRoute.offsetX = 0;
+                core.status.automaticRoute.offsetY = 0;
+                var ctx = core.createCanvas("route", 0, 0, core.__PIXELS__, core.__PIXELS__, 95);
+                core.clearMap(ctx);
+                ctx.fillStyle = "#bfbfbf";
+                ctx.strokeStyle = "#bfbfbf";
+                ctx.lineWidth = 8;
+                for (var m = 0; m < moveStep.length; m++) {
+                    var cell = logicalCellToScreen(moveStep[m].x, moveStep[m].y);
+                    if (m === moveStep.length - 1) {
+                        ctx.fillRect(cell.x * 32 + 10, cell.y * 32 + 10, 12, 12);
+                    } else {
+                        var cx = cell.x * 32 + 16, cy = cell.y * 32 + 16;
+                        var currDir = CubeWorld.logicalToScreenDirection(moveStep[m].direction, getViewQuarter());
+                        var nextDir = CubeWorld.logicalToScreenDirection(moveStep[m + 1].direction, getViewQuarter());
+                        ctx.beginPath();
+                        ctx.moveTo(cx - core.utils.scan[currDir].x * 11, cy - core.utils.scan[currDir].y * 11);
+                        ctx.lineTo(cx, cy);
+                        ctx.lineTo(cx + core.utils.scan[nextDir].x * 11, cy + core.utils.scan[nextDir].y * 11);
+                        ctx.stroke();
+                    }
+                }
+            };
+
+            var originalClearRouteNode = core.control.clearAutomaticRouteNode;
+            core.control.clearAutomaticRouteNode = function (x, y) {
+                if (!hasMapOrientation()) return originalClearRouteNode.apply(this, arguments);
+                var screen = logicalCellToScreen(x, y);
+                core.clearMap("route", screen.x * 32 + 5, screen.y * 32 + 5, 27, 27);
+            };
+        }
+
+        function redrawMapOrientation() {
+            if (!core.status || !core.status.played || !isFace(core.status.floorId) || !core.status.maps) {
+                return getViewQuarter();
+            }
+            core.redrawMap();
+            core.drawHero();
+            return getViewQuarter();
+        }
+
+        function applyViewQuarter(quarter, redraw) {
+            quarter = storeViewQuarter(quarter);
+            if (redraw !== false) redrawMapOrientation();
             return quarter;
         }
 
-        function syncViewRotation(animate) {
-            return applyViewQuarter(getViewQuarter(), animate);
+        function syncMapOrientation() {
+            return redrawMapOrientation();
+        }
+
+        // 保留旧名称给存档或脚本调用；现在没有任何 DOM/CSS 旋转。
+        function syncViewRotation() {
+            return syncMapOrientation();
         }
 
         function resetViewFromState() {
             pendingViewQuarter = null;
-            return syncViewRotation(false);
+            return getViewQuarter();
         }
 
         function prepareCrossView(sourceDirection, targetDirection) {
@@ -506,23 +767,22 @@
             return pendingViewQuarter;
         }
 
-        function afterChangeFloorView(floorId) {
+        function beforeChangeFloorView(floorId) {
             if (!isFace(floorId)) {
-                pendingViewQuarter = null;
-                storeViewQuarter(0);
-                return applyViewQuarter(0, false);
+                return storeViewQuarter(0);
             }
             if (pendingViewQuarter != null) {
-                var target = pendingViewQuarter;
-                pendingViewQuarter = null;
-                storeViewQuarter(target);
-                return applyViewQuarter(target, true);
+                return storeViewQuarter(pendingViewQuarter);
             }
-            // 读档恢复保存的画面朝向；飞行、脚本换层和新开游戏没有连续
-            // 的共享边，统一回到该面的规范朝向。
-            if (core.hasFlag("__fromLoad__")) return syncViewRotation(false);
-            storeViewQuarter(0);
-            return applyViewQuarter(0, false);
+            // 读档恢复保存的朝向；飞行、脚本换层和新开游戏没有连续共享
+            // 边，绘制目标面前先回到规范朝向。
+            if (core.hasFlag("__fromLoad__")) return getViewQuarter();
+            return storeViewQuarter(0);
+        }
+
+        function afterChangeFloorView() {
+            pendingViewQuarter = null;
+            return getViewQuarter();
         }
 
         function screenLocationToLogical(loc) {
@@ -530,26 +790,16 @@
             var quarter = getViewQuarter();
             if (quarter === 0) return loc;
             var length = core.__PIXELS__ * core.domStyle.scale;
-            var x = loc.x, y = loc.y;
-            if (quarter === 1) { x = loc.y; y = length - loc.x; }
-            if (quarter === 2) { x = length - loc.x; y = length - loc.y; }
-            if (quarter === 3) { x = length - loc.y; y = loc.x; }
+            var logical = CubeWorld.screenToLogicalPoint(loc.x, loc.y, length, quarter);
             var maximum = Math.max(0, length - 0.001);
             return {
-                x: Math.max(0, Math.min(maximum, x)),
-                y: Math.max(0, Math.min(maximum, y)),
+                x: Math.max(0, Math.min(maximum, logical.x)),
+                y: Math.max(0, Math.min(maximum, logical.y)),
                 size: loc.size
             };
         }
 
         function installViewIntegration() {
-            var originalCreateCanvas = core.ui.createCanvas;
-            core.ui.createCanvas = function () {
-                var context = originalCreateCanvas.apply(this, arguments);
-                if (context && context.canvas) placeDynamicCanvas(context.canvas);
-                return context;
-            };
-
             var originalGetClickLoc = core.actions._getClickLoc;
             core.actions._getClickLoc = function (x, y) {
                 var loc = originalGetClickLoc.call(this, x, y);
@@ -562,17 +812,9 @@
                 var screenDirection = KEY_DIRECTIONS[keyCode];
                 if (!screenDirection || !core.status.played || core.status.lockControl
                     || !isFace(core.status.floorId) || core.isReplaying()) return false;
-                if (viewTransitioning) return true;
                 core.moveHero(CubeWorld.screenToLogicalDirection(screenDirection, getViewQuarter()));
                 return true;
             }, 20);
-
-            ["ondown", "onmove", "onup"].forEach(function (action) {
-                core.registerAction(action, "cube-view-transition", function () {
-                    return viewTransitioning && core.status.played && !core.status.lockControl
-                        && isFace(core.status.floorId);
-                }, 40);
-            });
         }
 
         function showLoadWarnings() {
@@ -920,26 +1162,28 @@
             refreshDamage: refreshDamage, openDoorsWhenClear: openDoorsWhenClear,
             openViewer: openViewer, closeViewer: closeViewer, toggleViewer: toggleViewer,
             refreshViewer: refreshViewer, setupUI: setupUI, showLoadWarnings: showLoadWarnings,
-            setupWorldStage: setupWorldStage, getViewQuarter: getViewQuarter,
+            setupMapPresentation: setupMapPresentation, getViewQuarter: getViewQuarter,
+            applyViewQuarter: applyViewQuarter, syncMapOrientation: syncMapOrientation,
             syncViewRotation: syncViewRotation, resetViewFromState: resetViewFromState,
-            afterChangeFloorView: afterChangeFloorView,
+            beforeChangeFloorView: beforeChangeFloorView, afterChangeFloorView: afterChangeFloorView,
+            logicalCellToScreen: logicalCellToScreen, screenCellToLogical: screenCellToLogical,
             logicalToScreenDirection: function (direction) {
                 return CubeWorld.logicalToScreenDirection(direction, getViewQuarter());
             },
             screenToLogicalDirection: function (direction) {
                 return CubeWorld.screenToLogicalDirection(direction, getViewQuarter());
             },
-            screenLocationToLogical: screenLocationToLogical,
-            isViewTransitioning: function () { return viewTransitioning; }
+            screenLocationToLogical: screenLocationToLogical
         };
         plugin.cubeWorld = runtime;
 
+        installMapRenderer();
         installViewIntegration();
 
         var previousAfterLoadResources = plugin._afterLoadResources;
         plugin._afterLoadResources = function () {
             if (previousAfterLoadResources) previousAfterLoadResources.apply(this, arguments);
-            setupWorldStage();
+            setupMapPresentation();
             setupUI();
             showLoadWarnings();
         };

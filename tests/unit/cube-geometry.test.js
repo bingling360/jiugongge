@@ -92,6 +92,34 @@ test("屏幕方向按当前画面角度反算为规范地图方向", () => {
     }
 });
 
+test("地图朝向只重排离散格子，正反坐标映射严格互逆", () => {
+    assert.deepEqual(CubeWorld.logicalToScreenCell(3, 2, 13, 3), { x: 2, y: 9 });
+    assert.deepEqual(CubeWorld.logicalToScreenCell(3, 0, 13, 3), { x: 0, y: 9 });
+    for (const quarter of [0, 1, 2, 3]) {
+        for (let x = 0; x < 13; x++) {
+            for (let y = 0; y < 13; y++) {
+                const screen = CubeWorld.logicalToScreenCell(x, y, 13, quarter);
+                assert.deepEqual(
+                    CubeWorld.screenToLogicalCell(screen.x, screen.y, 13, quarter),
+                    { x, y },
+                    `${quarter}/${x}/${y}`
+                );
+            }
+        }
+    }
+});
+
+test("连续点击坐标映射与离散格子映射一致", () => {
+    for (const quarter of [0, 1, 2, 3]) {
+        const logical = { x: 3 * 32 + 7, y: 2 * 32 + 11 };
+        const screen = CubeWorld.logicalToScreenPoint(logical.x, logical.y, 13 * 32, quarter);
+        assert.deepEqual(
+            CubeWorld.screenToLogicalPoint(screen.x, screen.y, 13 * 32, quarter),
+            logical
+        );
+    }
+});
+
 test("沿同一条物理边原路返回会恢复原画面角度", () => {
     const forward = geometry.step({ floorId: "MT4", x: 12, y: 9, direction: "right" });
     const onRight = CubeWorld.viewQuarterAfterCross(0, "right", forward.direction);

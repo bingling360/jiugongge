@@ -61,8 +61,8 @@ var functions_d6ad677b_427a_4623_b50f_a445a3b0ef8a =
 			// 设置一次工具栏，统计出元素数量 
 			// 注意：录像回退rewindReplay时会调用此函数，此时工具栏应该显示录像图标，所以这里要判定
 			core.setToolbarButton(core.domStyle.toolbarBtn === 'replay' ? 'replay' : 'normal');
-			// 新开游戏、读档和录像回退都会重建 hero；立即同步保存于
-			// hero.flags 的六面视角，避免切层前短暂显示上一次游戏的角度。
+			// 新开游戏、读档和录像回退都会重建 hero；同步保存于
+			// hero.flags 的六面地图朝向。
 			if (core.plugin.cubeWorld) core.plugin.cubeWorld.resetViewFromState();
 		},
 		"win": function (reason, norank, noexit) {
@@ -126,6 +126,10 @@ var functions_d6ad677b_427a_4623_b50f_a445a3b0ef8a =
 
 			// 根据分区信息自动砍层与恢复
 			if (core.autoRemoveMaps) core.autoRemoveMaps(floorId);
+
+			// 在目标地图开始绘制前确定离散格子朝向。跨面使用连续朝向，
+			// 读档恢复存档值，飞行与脚本换层回到规范朝向。
+			if (core.plugin.cubeWorld) core.plugin.cubeWorld.beforeChangeFloorView(floorId);
 
 			// 重置画布尺寸
 			core.maps.resizeMap(floorId);

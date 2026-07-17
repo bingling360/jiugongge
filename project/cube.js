@@ -70,6 +70,34 @@
         return DIRECTIONS[(index - normalizeQuarter(quarter) + 4) % 4];
     }
 
+    // 地图朝向只改变格子摆放，不旋转格子内的像素。这里给出规范地图格
+    // 到屏幕格的离散映射；运行时仍以原坐标处理事件和拓扑。
+    function logicalToScreenCell(x, y, size, quarter) {
+        quarter = normalizeQuarter(quarter);
+        if (quarter === 1) return { x: size - 1 - y, y: x };
+        if (quarter === 2) return { x: size - 1 - x, y: size - 1 - y };
+        if (quarter === 3) return { x: y, y: size - 1 - x };
+        return { x: x, y: y };
+    }
+
+    function screenToLogicalCell(x, y, size, quarter) {
+        return logicalToScreenCell(x, y, size, 4 - normalizeQuarter(quarter));
+    }
+
+    // 连续点映射用于鼠标坐标反算。点坐标落在 [0, length] 的边界上，
+    // 因此与使用 size - 1 的格子映射公式有一格之差。
+    function logicalToScreenPoint(x, y, length, quarter) {
+        quarter = normalizeQuarter(quarter);
+        if (quarter === 1) return { x: length - y, y: x };
+        if (quarter === 2) return { x: length - x, y: length - y };
+        if (quarter === 3) return { x: y, y: length - x };
+        return { x: x, y: y };
+    }
+
+    function screenToLogicalPoint(x, y, length, quarter) {
+        return logicalToScreenPoint(x, y, length, 4 - normalizeQuarter(quarter));
+    }
+
     // 跨面前后的逻辑方向可能不同。调整目标面的显示角度，使前进方向
     // 在屏幕上保持不变，从而让两张地图的出口边和入口边视觉相接。
     function viewQuarterAfterCross(currentQuarter, sourceDirection, targetDirection) {
@@ -544,6 +572,10 @@
         normalizeQuarter: normalizeQuarter,
         logicalToScreenDirection: logicalToScreenDirection,
         screenToLogicalDirection: screenToLogicalDirection,
+        logicalToScreenCell: logicalToScreenCell,
+        screenToLogicalCell: screenToLogicalCell,
+        logicalToScreenPoint: logicalToScreenPoint,
+        screenToLogicalPoint: screenToLogicalPoint,
         viewQuarterAfterCross: viewQuarterAfterCross,
         createGeometry: createGeometry,
         stableStringify: stableStringify,
