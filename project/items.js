@@ -69,46 +69,7 @@ var items_296f5d02_12fd_4166_a7c1_b5e830c9ee3a =
 		"text": "可以进行加点",
 		"itemEffect": null,
 		"itemEffectTip": "，全属性提升",
-		"useItemEvent": [
-			{
-				"type": "choices",
-				"choices": [
-					{
-						"text": "攻击+1",
-						"action": [
-							{
-								"type": "setValue",
-								"name": "status:atk",
-								"operator": "+=",
-								"value": "1"
-							}
-						]
-					},
-					{
-						"text": "防御+2",
-						"action": [
-							{
-								"type": "setValue",
-								"name": "status:def",
-								"operator": "+=",
-								"value": "2"
-							}
-						]
-					},
-					{
-						"text": "生命+200",
-						"action": [
-							{
-								"type": "setValue",
-								"name": "status:hp",
-								"operator": "+=",
-								"value": "200"
-							}
-						]
-					}
-				]
-			}
-		],
+		"useItemEvent": [],
 		"canUseItemEffect": "true",
 		"itemEffectEvent": {
 			"sound": "gem.mp3",
@@ -194,18 +155,19 @@ var items_296f5d02_12fd_4166_a7c1_b5e830c9ee3a =
 		"itemEffectTip": "，攻击+0"
 	},
 	"sword1": {
-		"cls": "equips",
+		"cls": "items",
 		"name": "铁剑",
-		"text": "一把很普通的铁剑",
-		"equip": {
-			"type": 0,
-			"animate": "sword",
+		"text": "攻击+3",
+		"itemEffect": null,
+		"itemEffectTip": "，攻击+3",
+		"useItemEffect": "core.status.hero.atk += 3",
+		"canUseItemEffect": "true",
+		"itemEffectEvent": {
+			"sound": "gem.mp3",
 			"value": {
-				"atk": 10
+				"atk:o": "3"
 			}
-		},
-		"itemEffect": "core.status.hero.atk += 10",
-		"itemEffectTip": "，攻击+10"
+		}
 	},
 	"sword2": {
 		"cls": "equips",
@@ -277,17 +239,19 @@ var items_296f5d02_12fd_4166_a7c1_b5e830c9ee3a =
 		"itemEffectTip": "，防御+0"
 	},
 	"shield1": {
-		"cls": "equips",
+		"cls": "items",
 		"name": "铁盾",
-		"text": "一个很普通的铁盾",
-		"equip": {
-			"type": 1,
+		"text": "防御+3",
+		"itemEffect": null,
+		"itemEffectTip": "，防御+3",
+		"useItemEffect": "core.status.hero.def += 3",
+		"canUseItemEffect": "true",
+		"itemEffectEvent": {
+			"sound": "gem.mp3",
 			"value": {
-				"def": 10
+				"def:o": "3"
 			}
-		},
-		"itemEffect": "core.status.hero.def += 10",
-		"itemEffectTip": "，防御+10"
+		}
 	},
 	"shield2": {
 		"cls": "equips",

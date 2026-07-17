@@ -9708,5 +9708,596 @@ var plugins_bb40132b_638b_4a9f_b028_d3fe47acc8d1 =
 				core.drawLine("back", 240, 240 + core.__PIXELS__ / 2, 240 + core.__PIXELS__, 240 + core.__PIXELS__ / 2, [100, 100, 240, 0.4], 2);
 			}
 		};
+	},
+	"cubeMap": function () {
+		var plugin = this;
+		var faces = ["MT0", "MT1", "MT2", "MT3", "MT4", "MT5"];
+		var titles = {
+			MT0: "\u6b63\u9762",
+			MT1: "\u540e\u9762",
+			MT2: "\u5de6\u9762",
+			MT3: "\u53f3\u9762",
+			MT4: "\u9876\u9762",
+			MT5: "\u5e95\u9762"
+		};
+		var opposite = { up: "down", down: "up", left: "right", right: "left" };
+		var scan = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
+		var edges = {
+			MT0: { up: ["MT4", "down"], down: ["MT5", "up"], left: ["MT2", "right"], right: ["MT3", "left"] },
+			MT1: { up: ["MT4", "up"], down: ["MT5", "down"], left: ["MT3", "right"], right: ["MT2", "left"] },
+			MT2: { up: ["MT4", "left"], down: ["MT5", "left"], left: ["MT1", "right"], right: ["MT0", "left"] },
+			MT3: { up: ["MT4", "right"], down: ["MT5", "right"], left: ["MT0", "right"], right: ["MT1", "left"] },
+			MT4: { up: ["MT1", "up"], down: ["MT0", "up"], left: ["MT2", "up"], right: ["MT3", "up"] },
+			MT5: { up: ["MT0", "down"], down: ["MT1", "down"], left: ["MT2", "down"], right: ["MT3", "down"] }
+		};
+		var edgeReverse = {
+			MT0: { up: false, down: false, left: false, right: false },
+			MT1: { up: true, down: true, left: false, right: false },
+			MT2: { up: false, down: true, left: false, right: false },
+			MT3: { up: true, down: false, left: false, right: false },
+			MT4: { up: true, down: false, left: false, right: true },
+			MT5: { up: false, down: true, left: true, right: false }
+		};
+
+		function isCubeFloor(floorId) {
+			return faces.indexOf(floorId) >= 0;
+		}
+
+		function floorSize(floorId) {
+			var floor = core.floors[floorId] || {};
+			return { width: floor.width || core.__SIZE__, height: floor.height || core.__SIZE__ };
+		}
+
+		function landAtEdge(floorId, edge, t, reverse) {
+			var size = floorSize(floorId);
+			var max = (edge == "left" || edge == "right" ? size.height : size.width) - 1;
+			t = core.clamp(t, 0, max);
+			if (reverse) t = max - t;
+			if (edge == "up") return { x: t, y: 0 };
+			if (edge == "down") return { x: t, y: size.height - 1 };
+			if (edge == "left") return { x: 0, y: t };
+			return { x: size.width - 1, y: t };
+		}
+
+		var cubeMap = plugin.cubeMap = {
+			faces: faces,
+			titles: titles,
+			isCubeFloor: isCubeFloor,
+			getAdjacent: function (floorId, direction) {
+				return (edges[floorId] || {})[direction] || null;
+			},
+			step: function (floorId, x, y, direction) {
+				if (!isCubeFloor(floorId) || !scan[direction]) return null;
+				var size = floorSize(floorId);
+				var nx = x + scan[direction][0], ny = y + scan[direction][1];
+				if (nx >= 0 && nx < size.width && ny >= 0 && ny < size.height) {
+					return { floorId: floorId, x: nx, y: ny, direction: direction, crossed: false };
+				}
+				var edge = edges[floorId] && edges[floorId][direction];
+				if (!edge) return null;
+				var targetFloor = edge[0], targetEdge = edge[1];
+				var t = (direction == "left" || direction == "right") ? y : x;
+				var loc = landAtEdge(targetFloor, targetEdge, t, (edgeReverse[floorId] || {})[direction]);
+				return { floorId: targetFloor, x: loc.x, y: loc.y, direction: direction, crossed: true };
+			},
+			projectOffset: function (floorId, x, y, dx, dy) {
+				var now = { floorId: floorId, x: x, y: y };
+				var dirX = dx < 0 ? "left" : "right";
+				var dirY = dy < 0 ? "up" : "down";
+				for (var i = 0; i < Math.abs(dx); i++) {
+					now = cubeMap.step(now.floorId, now.x, now.y, dirX);
+					if (!now) return null;
+				}
+				for (var j = 0; j < Math.abs(dy); j++) {
+					now = cubeMap.step(now.floorId, now.x, now.y, dirY);
+					if (!now) return null;
+				}
+				return now;
+			},
+			canCross: function (fromFloor, x, y, direction, target) {
+				if (!target || !target.crossed) return false;
+				if (core.inArray((core.floors[fromFloor].cannotMove || {})[x + "," + y], direction)) return false;
+				if (core.inArray((core.floors[target.floorId].cannotMoveIn || {})[target.x + "," + target.y], opposite[direction])) return false;
+
+				// 跨面落点的 cannotIn 检查：落点若是箭头 terrain（如 arrowUp/arrowDown），
+				// 应按“跨面后实际进入落点的方向”判定其可通行性——方向可通行则放行、
+				// 不可通行则拦住（而非一刀切全放行）。
+				// 关键：跨面会发生坐标/方向旋转，进入落点的实际方向是 newDir = opposite(目标边)，
+				// 并非源层的原始 direction。用 newDir 交给引擎 _canMoveHero_checkCannotInOut
+				// （其内部会把 cannotIn 方向翻到反向再匹配，语义与常规移动一致）。
+				// 空格落点 tile=0，event 无 cannotIn，自然放行，不影响“空格可跨”。
+				var __crossEdge = (edges[fromFloor] || {})[direction];
+				var __enterDir = __crossEdge ? opposite[__crossEdge[1]] : direction;
+				var toArrays = core.maps._generateMovableArray_arrays(target.floorId);
+				if (core.maps._canMoveHero_checkCannotInOut(Object.keys(toArrays).map(function (name) {
+					return toArrays[name][target.y][target.x];
+				}), "cannotIn", __enterDir)) return false;
+
+				var fromArrays = core.maps._generateMovableArray_arrays(fromFloor);
+				if (core.maps._canMoveHero_checkCannotInOut(Object.keys(fromArrays).map(function (name) {
+					return fromArrays[name][y][x];
+				}), "cannotOut", direction)) return false;
+			var targetBlock = core.getBlock(target.x, target.y, target.floorId);
+			if (targetBlock && !targetBlock.disable && targetBlock.event && targetBlock.event.noPass) {
+				// 有触发器的格子（怪物/NPC/道具/事件等）一般放行，由 moveAction 在跨面后
+				// 像常规一样触发其事件；但下面两类 noPass 格子必须特殊处理：
+				var __cls = targetBlock.event.cls || '';
+				var __id = targetBlock.event.id || '';
+				var __trg = targetBlock.event.trigger;
+				// 1) 箱子（推箱子）：跨面进入时无法"推动"，应直接拦住，勇士留在原面。
+				//    （常规踩上去是推箱子；但跨面落点是"瞬移抵达"，没有可推入的相邻格，
+				//    故与用户期望一致：直接无法过去）
+				if (__id == 'box' || __id == 'boxed' || __trg == 'pushBox') return false;
+				// 2) NPC（cls 以 npc 开头，含 npc48）：放行，由 moveAction 在对面触发其事件。
+				//    即使 NPC 没有默认 trigger（blocksInfo 仅给 enemy/items 设了默认 trigger），
+				//    也不应在此拦截，否则跨面永远无法触发 NPC。
+				if (__cls.indexOf('npc') == 0) {
+					// 放行：继续后续检查（canBreak / deadzone 等），最终返回 true
+				} else if (__trg == null || __trg == 'null') {
+					// 其余"无触发器的纯障碍"（如地形墙、无触发器的 noPass 格子）拦住
+					return false;
+				}
+			}
+				// 跨面目标格若是可破墙（暗墙/彩色墙），不可穿过，必须先用破墙镐破坏
+				if (targetBlock && !targetBlock.disable && targetBlock.event && targetBlock.event.canBreak) return false;
+
+			if (!core.flags.canGoDeadZone && !core.status.lockControl) {
+				// 跨面落点是“瞬移抵达”。本 deadzone 分支仅在落点为空格
+				// (eventArray==0) 时生效；空格上不存在本面自身的领域/激光等，
+				// 因此落点格的致命伤害只可能来自“跨面投影”（相邻面的领域/激光/阻击/追猎
+				// 投到本面），对玩家不可见，不应拦截跨面——否则会出现
+				// “明明啥都没有却上不去”的现象。
+				// 故临时关闭跨面投影相关 flag，仅按“本面固有伤害”判定：
+				// 空格固有伤害恒为 0，于是空落点一律放行（跨面后由 checkBlock
+				// 正常结算落点所在格受到的跨面投影伤害，游戏平衡不受影响）。
+				var __savedNoZone = core.hasFlag("no_zone");
+				var __savedNoLaser = core.hasFlag("no_laser");
+				var __savedNoChase = core.hasFlag("no_chase");
+				var __savedNoRepulse = core.hasFlag("no_repulse");
+				if (!__savedNoZone) core.setFlag("no_zone", true);
+				if (!__savedNoLaser) core.setFlag("no_laser", true);
+				if (!__savedNoChase) core.setFlag("no_chase", true);
+				if (!__savedNoRepulse) core.setFlag("no_repulse", true);
+				var checkBlockInfo = originGetCheckBlock.call(core.control.controldata, target.floorId);
+				if (!__savedNoZone) core.setFlag("no_zone", null);
+				if (!__savedNoLaser) core.setFlag("no_laser", null);
+				if (!__savedNoChase) core.setFlag("no_chase", null);
+				if (!__savedNoRepulse) core.setFlag("no_repulse", null);
+				var eventArray = core.maps.getMapArray(target.floorId);
+				if (checkBlockInfo && Math.max(core.status.hero.hp, 1) <= ((checkBlockInfo.damage || {})[target.x + "," + target.y] || 0) && eventArray[target.y][target.x] == 0)
+					return false;
+			}
+				return true;
+			},
+			moveBlockAcross: function (fromFloor, x, y, toFloor, toX, toY) {
+				var block = core.getBlock(x, y, fromFloor);
+				if (!block) return;
+				// 允许移动到空地或可穿过图块（道具），只拦截墙/怪物/NPC
+				var targetBlock = core.getBlock(toX, toY, toFloor, false);
+				if (targetBlock && targetBlock.event) {
+					var cls = targetBlock.event.cls || '';
+					if (!core.control.getChaseType().includes(cls) || targetBlock.event.data) return;
+				} else if (targetBlock) {
+					return;
+				}
+				core.removeBlock(x, y, fromFloor);
+				core.setBlock(block.event.id, toX, toY, toFloor);
+				if (fromFloor == core.status.floorId || toFloor == core.status.floorId) core.redrawMap();
+				core.updateCheckBlock();
+				core.updateDamage();
+			},
+			inRange: function (fromFloor, fromX, fromY, toFloor, toX, toY, range, square) {
+				for (var dx = -range; dx <= range; dx++) {
+					for (var dy = -range; dy <= range; dy++) {
+						if (dx == 0 && dy == 0) continue;
+						if (!square && Math.abs(dx) + Math.abs(dy) > range) continue;
+						var loc = cubeMap.projectOffset(fromFloor, fromX, fromY, dx, dy);
+						if (loc && loc.floorId == toFloor && loc.x == toX && loc.y == toY) return true;
+					}
+				}
+				return false;
+			},
+			// 跨楼层开门：当边缘另一侧（相邻楼层）的目标格是一扇门时，
+			// 检测勇士对应钥匙是否足够。足够则扣钥匙并在目标楼层开门；
+			// 不足则与常规开门一样播放失败音效并提示“钥匙不足”。
+			// 返回值：'opened'（已开门）| 'blocked'（钥匙不足/无法开启）| null（目标格不是门）
+			tryOpenCrossDoor: function (target) {
+				if (!target) return null;
+				var block = core.getBlock(target.x, target.y, target.floorId);
+				if (!block || !block.event) return null;
+				// 可破墙（暗墙/彩色墙）不能被当成门直接撞开，必须由破墙镐破坏
+				if (block.event.canBreak) return null;
+				var doorInfo = block.event.doorInfo;
+				if (!doorInfo) return null; // 目标格不是门
+				var id = block.event.id;
+				var needKey = true;
+				if (id == "steelDoor" && core.flags.steelDoorWithoutKey) needKey = false;
+				var keyInfo = doorInfo.keys || {};
+				if (needKey) {
+					// 先检测所有钥匙是否足够（与 libs/events.js 的 _openDoor_check 保持一致）
+					for (var kn in keyInfo) {
+						var keyValue = keyInfo[kn];
+						var realKey = kn;
+						if (realKey.endsWith(":o")) realKey = realKey.substring(0, realKey.length - 2);
+						// 对应道具不存在，视为无法开启
+						if (!core.material.items[realKey]) {
+							core.stopSound();
+							core.playSound("操作失败");
+							core.drawTip("无法开启此门");
+							return "blocked";
+						}
+						// 钥匙数量不足：与常规开门一致地提示
+						if (core.itemCount(realKey) < keyValue) {
+							core.stopSound();
+							core.playSound("操作失败");
+							core.drawTip("你的" + ((core.material.items[realKey] || {}).name || "钥匙") + "不足！", null, true);
+							return "blocked";
+						}
+					}
+					// 钥匙充足：扣除钥匙（以 :o 结尾表示只需拥有、不消耗）
+					if (!core.status.event.id) core.autosave(true);
+					for (var kn2 in keyInfo) {
+						if (!kn2.endsWith(":o")) core.removeItem(kn2, keyInfo[kn2]);
+					}
+				}
+				core.playSound(doorInfo.openSound);
+				// 目标楼层通常不在当前显示，直接移除门方块即可
+				// （removeBlock 会自动清理该层缓存与地图数组）
+				core.removeBlock(target.x, target.y, target.floorId);
+				// 若目标楼层恰好是当前显示层，则重绘
+				if (target.floorId == core.status.floorId) core.redrawMap();
+				core.updateCheckBlock();
+				core.updateDamage();
+				return "opened";
+			}
+		};
+
+		var afterLoad = plugin._afterLoadResources;
+		plugin._afterLoadResources = function () {
+			if (afterLoad) afterLoad.apply(this, arguments);
+			faces.forEach(function (floorId) {
+				if (core.status.maps && core.status.maps[floorId]) core.status.maps[floorId].title = titles[floorId];
+			});
+		};
+
+		// ===== 破墙镐/破冰镐 跨层破墙 =====
+		// 当勇士位于立方体某面边缘、正对相邻面，且相邻面边缘格是一堵可破墙时，
+		// 使用破墙镐/破冰镐应当破坏“对侧”的墙（当前面该方向外侧本就没有墙）。
+		var originUseItem = items.prototype.useItem;
+		items.prototype.useItem = function (itemId, noRoute, callback) {
+			var cubeMap = plugin.cubeMap;
+			if (cubeMap && cubeMap.isCubeFloor && cubeMap.isCubeFloor(core.status.floorId)
+				&& (itemId == "pickaxe" || itemId == "icePickaxe" || itemId == "bomb")) {
+				var dir = core.getHeroLoc("direction");
+				var s = cubeMap.step(core.status.floorId, core.getHeroLoc("x"), core.getHeroLoc("y"), dir);
+				if (s && s.crossed) {
+					var b = core.getBlock(s.x, s.y, s.floorId);
+					if (b && !b.disable && b.event) {
+						// 破墙镐/破冰镐：对侧是可破墙
+						if ((itemId == "pickaxe" || itemId == "icePickaxe") && b.event.canBreak) {
+							// 找到对侧可破墙，跨层破墙
+							if (core.getLocalStorage("autoSaveBeforeUseItem")) {
+								if (noRoute) core.autosave(true); else core.autosave(false);
+							}
+							core.removeBlock(s.x, s.y, s.floorId);
+							if (s.floorId == core.status.floorId) core.redrawMap();
+							core.updateCheckBlock();
+							core.updateDamage();
+							core.playSound("破墙镐");
+							core.drawTip(core.material.items[itemId].name + "使用成功", itemId);
+							// 消耗道具（与普通破墙一致）
+							core.status.hero.items.tools[itemId]--;
+							if (core.status.hero.items.tools[itemId] <= 0) delete core.status.hero.items.tools[itemId];
+							core.updateStatusBar(false, true);
+							if (!noRoute) core.status.route.push("item:" + itemId);
+							if (callback) callback();
+							return;
+						}
+						// 炸弹：对侧是可用炸弹的怪物，跨层炸怪（与普通炸弹一致）
+						if (itemId == "bomb" && b.event.cls && b.event.cls.indexOf("enemy") == 0) {
+							var __enemy = core.getEnemyValue(b.event.id, null, s.x, s.y, s.floorId);
+							if (__enemy && !__enemy.notBomb) {
+								if (core.getLocalStorage("autoSaveBeforeUseItem")) {
+									if (noRoute) core.autosave(true); else core.autosave(false);
+								}
+								core.removeBlock(s.x, s.y, s.floorId);
+								if (s.floorId == core.status.floorId) core.redrawMap();
+								core.updateCheckBlock();
+								core.updateDamage();
+								core.playSound("炸弹");
+								core.drawTip(core.material.items[itemId].name + "使用成功", itemId);
+								// 消耗道具（与普通炸弹一致）
+								core.status.hero.items.tools[itemId]--;
+								if (core.status.hero.items.tools[itemId] <= 0) delete core.status.hero.items.tools[itemId];
+								core.updateStatusBar(false, true);
+								if (!noRoute) core.status.route.push("item:" + itemId);
+								if (callback) callback();
+								return;
+							}
+						}
+					}
+				}
+			}
+			return originUseItem.call(this, itemId, noRoute, callback);
+		};
+
+		var originMoveAction = control.prototype.moveAction;
+		control.prototype.moveAction = function (callback) {
+			var floorId = core.status.floorId, dir = core.getHeroLoc("direction");
+			if (isCubeFloor(floorId) && !core.status.heroMoving && scan[dir]) {
+				var x = core.getHeroLoc("x"), y = core.getHeroLoc("y");
+				var target = cubeMap.step(floorId, x, y, dir);
+				if (target && target.crossed) {
+					// 跨楼层开门：若边缘另一侧是门，则检测钥匙后开门（不跨面移动，勇士停在原地）
+					// 钥匙足够 -> 开门；不足 -> 提示钥匙不足。两种情况都按"撞墙不通过"处理。
+					if (cubeMap.tryOpenCrossDoor(target)) {
+						return this._moveAction_noPass(false, callback);
+					}
+					var edge = edges[floorId][dir];
+					core.status.__cubeCrossInfo = {
+						fromFloor: floorId,
+						fromX: x,
+						fromY: y,
+						toFloor: target.floorId,
+						toX: target.x,
+						toY: target.y,
+						floorId: target.floorId,
+						x: target.x,
+						y: target.y,
+						ignoreDir: edge && edge[1]
+					};
+					if (!cubeMap.canCross(floorId, x, y, dir, target)) {
+						delete core.status.__cubeCrossInfo;
+						return this._moveAction_noPass(false, callback);
+					}
+					var targetBlock = core.getBlock(target.x, target.y, target.floorId);
+					var targetIsBattle = targetBlock && !targetBlock.disable && targetBlock.event && targetBlock.event.trigger == "battle";
+					// 跨面后方向旋转：从源层 dir 出去，进入目标层的 targetEdge
+					// 进入后的方向 = opposite(targetEdge)
+					// 例如 MT4 right -> MT3 up，进入后方向应为 down（从上边进入，向下走）
+				var newDir = edge ? opposite[edge[1]] : dir;
+					core.status.route.push(dir);
+					core.status.automaticRoute.moveStepBeforeStop = [];
+					core.status.automaticRoute.lastDirection = newDir;
+					var clearCubeCrossInfo = function () {
+						delete core.status.__cubeCrossInfo;
+						if (callback) callback();
+					};
+				var crossToTargetFloor = function () {
+					// 仅在“真正跨面”（changeFloor）之前停止按键长按循环：
+					// 否则跨面后按键循环会用旧方向覆盖旋转后的方向，导致又走一步。
+					// 注意：不能放在跨面判定之前——跨层 NPC 等“仅触发事件、不跨面”的情况
+					// 若提前清空长按，会让长按移动在边缘被反复打断，表现为“一卡一卡”。
+					core.status.holdingKeys = [];
+					core.status.heroStop = true;
+					core.changeFloor(target.floorId, null, { x: target.x, y: target.y, direction: newDir }, 0, function () {
+							core.moveOneStep(clearCubeCrossInfo);
+							core.checkRouteFolding();
+						});
+					};
+				// 怪物 / NPC 等带触发器的格子：与常规一致，先在对侧目标层触发事件，再决定是否跨面
+				// 注意：跨面落点可能是空格（targetBlock 为 null，如顶面 (12,6)），
+				// 此时不应进入 battle/NPC 分支，也不应访问 .event 导致空指针崩溃。
+				var targetCls = (targetBlock && targetBlock.event ? (targetBlock.event.cls || "") : "");
+				var isNpc = targetCls.indexOf("npc") == 0;
+				// ===== 跨面怪物战斗：先在对侧目标层触发战斗，再决定是否真正跨面 =====
+				if (targetIsBattle) {
+					var oldFloorId = core.status.floorId;
+					var oldThisMap = core.status.thisMap;
+					var oldAutosaveB = core.autosave;
+					if (!core.status.event.id && oldAutosaveB) oldAutosaveB.call(core, true);
+					if (oldAutosaveB) core.autosave = function () {};
+					core.status.floorId = target.floorId;
+					core.status.thisMap = core.status.maps[target.floorId];
+					core.trigger(target.x, target.y, function () {
+						core.status.floorId = oldFloorId;
+						core.status.thisMap = oldThisMap;
+						if (oldAutosaveB) core.autosave = oldAutosaveB;
+						if (core.enemys.canBattle(targetBlock.event.id, target.x, target.y, target.floorId))
+							crossToTargetFloor();
+						else
+							clearCubeCrossInfo();
+					});
+					return;
+				}
+				// ===== 跨面 NPC（一次性对话/商人等）：触发对侧事件，并让 NPC 像常规一样“消失” =====
+				if (isNpc) {
+					var oldFloorId = core.status.floorId;
+					var oldThisMap = core.status.thisMap;
+					var oldEventData = core.status.event.data;
+					var oldAutosave = core.autosave;
+					var oldNextX = core.nextX, oldNextY = core.nextY;
+					var restored = false;
+					// 事件真正结束后才还原临时状态（对话框等待期间不能还原，否则移除会落到原面/边缘格）
+					var restoreCrossState = function () {
+						if (restored) return;
+						restored = true;
+						core.status.floorId = oldFloorId;
+						core.status.thisMap = oldThisMap;
+						core.nextX = oldNextX;
+						core.nextY = oldNextY;
+						if (oldAutosave) core.autosave = oldAutosave;
+						if (core.status.event.id != 'action') core.status.event.data = oldEventData;
+					};
+					if (!core.status.event.id && oldAutosave) oldAutosave.call(core, true);
+					if (oldAutosave) core.autosave = function () {};
+					core.status.floorId = target.floorId;
+					core.status.thisMap = core.status.maps[target.floorId];
+					// 关键修复：NPC 事件常用 core.removeBlock(core.nextX(), core.nextY()) 来“消失”自己，
+					// 而 nextX/nextY 取自勇士位置（原面边缘格），跨面时会指错格；临时指向对侧目标格。
+					core.nextX = function () { return target.x; };
+					core.nextY = function () { return target.y; };
+					// 目标楼层/坐标写入 event.data：让“消失/移除”按 data.floorId 落对侧楼层；
+					// 并用 event.data.callback 在事件列表真正结束后才还原状态。
+					core.status.event.data = {
+						floorId: target.floorId, x: target.x, y: target.y,
+						callback: function () { restoreCrossState(); }
+					};
+					core.trigger(target.x, target.y, function () {
+						if (oldAutosave) core.autosave = oldAutosave;
+						if (core.status.event.id == 'action') {
+							// 碰触事件型 NPC 仍在运行（可能正等玩家在对话框操作）：暂不改 floorId/nextX，
+							// 交给 event.data.callback 在事件结束后还原。
+						} else {
+							restoreCrossState();
+						}
+						clearCubeCrossInfo();
+					});
+					return;
+				}
+					crossToTargetFloor();
+					return;
+				}
+			}
+			return originMoveAction.call(this, callback);
+		};
+
+		var originCheckBlock = control.prototype.checkBlock;
+		var getCrossToFloor = function (info) {
+			return info && (info.toFloor || info.floorId);
+		};
+		var getCrossToX = function (info) {
+			return info && (info.toX != null ? info.toX : info.x);
+		};
+		var getCrossToY = function (info) {
+			return info && (info.toY != null ? info.toY : info.y);
+		};
+		var isCrossLandingLoc = function (info, loc) {
+			return info && loc && getCrossToX(info) == loc.x && getCrossToY(info) == loc.y;
+		};
+		var isFakeSourceFloorLanding = function (info, loc) {
+			if (!isCrossLandingLoc(info, loc) || core.status.floorId != info.fromFloor) return false;
+			return info.fromX != loc.x || info.fromY != loc.y;
+		};
+		control.prototype.checkBlock = function () {
+			var info = core.status.__cubeCrossInfo;
+			var loc = core.status.hero && core.status.hero.loc;
+			if (isFakeSourceFloorLanding(info, loc)) return;
+			if (isCrossLandingLoc(info, loc)
+				&& (getCrossToFloor(info) == core.status.floorId || info.fromFloor == core.status.floorId)) {
+				var fresh = core.control.controldata.getCheckBlock(core.status.floorId);
+				if (fresh) core.status.checkBlock = fresh;
+			}
+			return originCheckBlock.call(this);
+		};
+
+		var originKeyDownViewMaps = actions.prototype._keyDownViewMaps;
+		actions.prototype._keyDownViewMaps = function (keycode) {
+			if (core.status.event.data == null) return originKeyDownViewMaps.call(this, keycode);
+			var dir = null;
+			if (keycode == 38 || keycode == 104) dir = "up";
+			if (keycode == 40 || keycode == 98) dir = "down";
+			if (keycode == 37 || keycode == 100) dir = "left";
+			if (keycode == 39 || keycode == 102) dir = "right";
+			if (dir) {
+				var data = core.status.event.data;
+				var next = cubeMap.getAdjacent(data.floorId, dir);
+				if (next) {
+					var floorId = next[0];
+					core.playSound("\u5149\u6807\u79fb\u52a8");
+					core.ui._drawViewMaps({
+						index: core.floorIds.indexOf(floorId),
+						x: data.x,
+						y: data.y,
+						damage: data.damage,
+						all: data.all
+					});
+				}
+				return true;
+			}
+			return originKeyDownViewMaps.call(this, keycode);
+		};
+
+		// ===== 跨层 checkBlock 缓存：避免每次边缘跨面检测都重算 6 面的领域/阻击/夹击投影 =====
+		// 领域/阻击/激光/夹击伤害只依赖“方块布局 + 相关 flag/道具”，与勇士当前坐标无关，
+		// 因此可以按 楼层 + 布局版本 + 动态开关 缓存，显著减少跨面检测开销（修复移动“一卡一卡”）。
+		var __cbVersion = 0;
+		var __cbCache = {};
+		function __invalidateCubeCheckBlock() { __cbCache = {}; __cbVersion++; }
+		// 暴露给外部调用：跨层追猎/阻击直接改 map 后需失效缓存，否则 getCheckBlock 返回旧数据
+		cubeMap.invalidateCheckBlockCache = __invalidateCubeCheckBlock;
+		if (typeof core.removeBlock == "function") {
+			var __originRemoveBlock = core.removeBlock;
+			core.removeBlock = function () {
+				var r = __originRemoveBlock.apply(this, arguments);
+				__cbVersion++;
+				return r;
+			};
+		}
+		if (typeof core.setBlock == "function") {
+			var __originSetBlock = core.setBlock;
+			core.setBlock = function () {
+				var r = __originSetBlock.apply(this, arguments);
+				__cbVersion++;
+				return r;
+			};
+		}
+
+		var originGetCheckBlock = core.control.controldata.getCheckBlock;
+		core.control.controldata.getCheckBlock = function (floorId) {
+			// 非立方体楼层不缓存（走引擎原逻辑）
+			if (!isCubeFloor(floorId)) return originGetCheckBlock.call(this, floorId);
+			// 缓存键：楼层 + 方块布局版本 + 影响伤害计算的 flag / 道具状态 + 是否处于跨面中
+			var flagsKey = (core.hasFlag("no_zone") ? "Z" : "") + (core.hasFlag("no_repulse") ? "R" : "")
+				+ (core.hasFlag("no_laser") ? "L" : "") + (core.hasItem("amulet") ? "A" : "")
+				+ (core.status.__cubeCrossInfo ? "C" : "");
+			var cacheKey = floorId + "#" + __cbVersion + "#" + flagsKey;
+			if (__cbCache[cacheKey]) return __cbCache[cacheKey];
+			var info = originGetCheckBlock.call(this, floorId);
+			if (!info) return info;
+			// 跨层领域/阻击/追猎投影已在 originGetCheckBlock (functions.js getCheckBlock L1660-L1837) 中计算
+			// 此处不再重复计算（原代码会导致领域/阻击跨层伤害翻倍）
+			__cbCache[cacheKey] = info;
+			return info;
+		};
+
+		var originRepulse = control.prototype._checkBlock_repulse;
+		control.prototype._checkBlock_repulse = function (repulse) {
+			if (!repulse || repulse.length == 0) return [];
+			var normal = [], actions = [];
+			repulse.forEach(function (t) {
+				if (t.length > 4) {
+					actions.push({
+						type: "function",
+						function: "function(){core.plugin.cubeMap.moveBlockAcross('" + t[4] + "'," + t[0] + "," + t[1] + ",'" + t[5] + "'," + t[6] + "," + t[7] + ");}"
+					});
+				}
+				else normal.push(t);
+			});
+			return originRepulse.call(this, normal).concat(actions);
+		};
+
+		var originGetEnemyInfo = core.enemys.enemydata.getEnemyInfo;
+		core.enemys.enemydata.getEnemyInfo = function (enemy, hero, x, y, floorId) {
+			floorId = floorId || core.status.floorId;
+			if (isCubeFloor(floorId) && x != null && y != null && core.status.checkBlock && core.status.checkBlock.needCache) {
+				var key = x + "," + y;
+				core.status.checkBlock.cache = core.status.checkBlock.cache || {};
+				if (!core.status.checkBlock.cache[key]) {
+					var hpBuff = 0, atkBuff = 0, defBuff = 0, guards = [], usedEnemyIds = {};
+					faces.forEach(function (sourceFloor) {
+						core.extractBlocks(sourceFloor);
+						(core.status.maps[sourceFloor].blocks || []).forEach(function (block) {
+							if (block.disable) return;
+							var e = core.getEnemyValue(block.event.id, null, block.x, block.y, sourceFloor);
+							if (!e) return;
+							if (core.hasSpecial(e.special, 25)) {
+								var inRange = e.haloRange == null || cubeMap.inRange(sourceFloor, block.x, block.y, floorId, x, y, e.haloRange, e.haloSquare);
+								if (inRange && (e.haloAdd || !usedEnemyIds[e.id])) {
+									hpBuff += e.hpBuff || 0;
+									atkBuff += e.atkBuff || 0;
+									defBuff += e.defBuff || 0;
+									usedEnemyIds[e.id] = true;
+								}
+							}
+							if (core.hasSpecial(e.special, 26) && cubeMap.inRange(sourceFloor, block.x, block.y, floorId, x, y, 1, true))
+								guards.push([block.x, block.y, block.event.id, sourceFloor]);
+						});
+					});
+					core.status.checkBlock.cache[key] = { hp_buff: hpBuff, atk_buff: atkBuff, def_buff: defBuff, guards: guards };
+				}
+			}
+			return originGetEnemyInfo.call(this, enemy, hero, x, y, floorId);
+		};
 	}
 }

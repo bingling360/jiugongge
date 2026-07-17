@@ -266,6 +266,12 @@ var comment_c456ea59_6018_45ef_8bcc_211a24c627dc = {
 					"_docs": "吸血比例",
 					"_data": "吸血怪的吸血百分比"
 				},
+				"absorbValue": {
+					"_leaf": true,
+					"_type": "textarea",
+					"_docs": "吸噬比例",
+					"_data": "吸噬的比例数值"
+				},
 				"hpBuff": {
 					"_leaf": true,
 					"_type": "textarea",

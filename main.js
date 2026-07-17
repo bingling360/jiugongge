@@ -3,7 +3,7 @@ function main () {
 
     //------------------------ 用户修改内容 ------------------------//
 
-    this.version = "2.9"; // 游戏版本号；如果更改了游戏内容建议修改此version以免造成缓存问题。
+    this.version = "2.9.3"; // 游戏版本号；如果更改了游戏内容建议修改此version以免造成缓存问题。
 
     this.useCompress = false; // 是否使用压缩文件
     // 当你即将发布你的塔时，请使用“JS代码压缩工具”将所有js代码进行压缩，然后将这里的useCompress改为true。
@@ -648,11 +648,11 @@ main.prototype.listen = function () {
         else if (main.core.isPlaying()) main.core.openBook(true);
     }
 
-    ////// 点击状态栏中的楼层传送器时 //////
+    ////// 点击状态栏中的楼层传送器时（已改为打开 3D 模型地图，与 C 键一致） //////
     main.statusBar.image.fly.onclick = function (e) {
         e.stopPropagation();
         if (core.isReplaying()) return;
-        else if (main.core.isPlaying()) main.core.useFly(true);
+        else if (main.core.isPlaying()) window.cubeMapToggle();
     }
 
     ////// 点击状态栏中的工具箱时 //////
@@ -683,18 +683,18 @@ main.prototype.listen = function () {
         else if (main.core.isPlaying()) main.core.openKeyBoard(true);
     }
 
-    ////// 点击状态栏中的快捷商店时 //////
+    ////// 点击状态栏中的快捷商店时（已禁用） //////
     main.statusBar.image.shop.onclick = function (e) {
         e.stopPropagation();
+        // 快捷商店已禁用
         if (core.isReplaying()) return;
-        else if (main.core.isPlaying()) main.core.openQuickShop(true);
     }
 
-    ////// 点击金币时也可以开启快捷商店 //////
+    ////// 点击金币时也可以开启快捷商店（已禁用） //////
     main.statusBar.image.money.onclick = function (e) {
         e.stopPropagation();
+        // 快捷商店已禁用
         if (core.isReplaying()) return;
-        else if (main.core.isPlaying()) main.core.openQuickShop(true);
     }
 
     ////// 楼梯图标代表浏览地图 //////

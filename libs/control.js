@@ -1165,6 +1165,7 @@ control.prototype.updateCheckBlock = function (floorId) {
 ////// 检查并执行领域、夹击、阻击事件 //////
 
 control.prototype.checkBlock = function () {
+    if (!core.status.checkBlock || !core.status.checkBlock.damage) return;
     var x = core.getHeroLoc('x'), y = core.getHeroLoc('y'), loc = x + "," + y;
     var damage = core.status.checkBlock.damage[loc];
     if (damage) {
@@ -1210,15 +1211,15 @@ control.prototype.checkBlock = function () {
     }
 
     const autoClear = core.plugin.autoClear;
-    if (autoClear) { // 检查autoClear的存在性，防止接档出现bug
+    if (autoClear) {
         if (actions.length > 0) {
             actions.push({
                 "type": "function", "async": true,
                 "function": "function(){core.plugin.autoClear();core.doAction();}"
-            }); // 注意要放在事件队列最后。经测试放在insertAction回调当中仍有小概率先于阻击结算触发，原因不明
+            });
             core.insertAction(actions, x, y);
         }
-        else autoClear(); // 阻击结算后执行自动清怪
+        else autoClear();
     }
     else {
         if (actions.length > 0) core.insertAction(actions, x, y);
@@ -1261,6 +1262,53 @@ control.prototype._checkBlock_repulse = function (repulse) {
     if (!repulse || repulse.length == 0) return [];
     var actions = [];
     repulse.forEach(function (t) {
+		// 跨层阻击：t.length >= 8 且 t[4] 是字符串（源楼层ID）
+		if (t.length >= 8 && typeof t[4] === 'string') {
+			try {
+				// t = [x, y, id, rdir, srcFloor, destFloor, destX, destY]
+				// srcFloor: 怪物所在的源楼层
+				// destFloor: 玩家所在的楼层（当前层）
+				// rdir: 阻击方向（怪物面向玩家的方向，也是推挤方向）
+				var srcFloor = t[4], destFloor = t[5];
+				var rdir = t[3];
+				
+				var sm = core.status.maps[srcFloor];
+				if (sm && sm.map && sm.map[t[1]]) {
+					var val = sm.map[t[1]][t[0]] || 0;
+					if (val) {
+						// 使用 cubeStep 计算怪物被推后应该在的位置
+						// cubeStep 会处理跨面逻辑
+						if (!core.control.controldata.cubeStep) {
+							console.error('cubeStep not found');
+							return;
+						}
+						var pushTo = core.control.controldata.cubeStep(srcFloor, t[0], t[1], rdir);
+						
+						if (pushTo && pushTo.floorId && pushTo.x !== undefined && pushTo.y !== undefined) {
+							// 获取目标楼层的地图数据
+							var targetMap = core.status.maps[pushTo.floorId];
+							if (targetMap && targetMap.map) {
+								// 检查目标位置是否为空
+								if (!core.getBlock(pushTo.x, pushTo.y, pushTo.floorId, false)) {
+									// 移动怪物到新位置
+									if (!targetMap.map[pushTo.y]) targetMap.map[pushTo.y] = [];
+									targetMap.map[pushTo.y][pushTo.x] = val;
+									sm.map[t[1]][t[0]] = 0;
+									
+									// 清除缓存
+									if (sm.blocks) sm.blocks = null;
+									if (targetMap.blocks) targetMap.blocks = null;
+								}
+							}
+						}
+					}
+				}
+			} catch(e) {
+				console.error('跨层阻击执行出错:', e);
+			}
+			return;
+        }
+        // 正常本层阻击
         actions.push({ "type": "move", "loc": [t[0], t[1]], "steps": [t[3]], "time": 80, "keep": true, "async": true });
     });
     if (actions.length > 0) actions.push({ "type": "waitAsync" });
@@ -1300,13 +1348,95 @@ control.prototype._checkBlock_chase = function (chase) {
     var actions = [];
     const { x: hx, y: hy } = core.status.hero.loc;
     const reverseDir = { 'up': 'down', 'down': 'up', 'left': 'right', 'right': 'left' };
-    chase = chase.sort((a, b) => {
+
+    // 跨层追猎：距离比较——对每个怪物（同一 srcFloor+x+y）的多个方向，
+    // 选择立体距离（step）最近的方向；若多个方向距离相等则不移动（用户需求）
+    var crossLayer = chase.filter(c => c.srcFloor && c.srcFloor !== core.status.floorId);
+    var sameLayer = chase.filter(c => !c.srcFloor || c.srcFloor === core.status.floorId);
+
+    var effectiveCross = [];
+    if (crossLayer.length > 0) {
+        // 按怪物（srcFloor+x+y）分组
+        var groups = {};
+        crossLayer.forEach(c => {
+            var gk = c.srcFloor + "," + c.x + "," + c.y;
+            if (!groups[gk]) groups[gk] = [];
+            groups[gk].push(c);
+        });
+        // 对每组选 step 最小的方向；若多个方向 step 相等则该怪物不移动
+        Object.keys(groups).forEach(gk => {
+            var g = groups[gk].sort((a, b) => (a.step || 999) - (b.step || 999));
+            var minStep = g[0].step || 999;
+            var nearest = g.filter(c => (c.step || 999) === minStep);
+            if (nearest.length === 1) {
+                effectiveCross.push(nearest[0]);
+            } else {
+                console.log('[跨层追猎] 怪物', gk, '多个方向距离相等(step='+minStep+')，不移动');
+            }
+        });
+    }
+
+    // 有效追猎 = 距离最近的跨层追猎 + 本层追猎，按到玩家平面距离排序
+    var effectiveChase = effectiveCross.concat(sameLayer);
+    effectiveChase = effectiveChase.sort((a, b) => {
         const { x: ax, y: ay } = a;
         const { x: bx, y: by } = b;
         return Math.abs(ax - hx) + Math.abs(ay - hy) - Math.abs(bx - hx) - Math.abs(by - hy);
-    })
-    chase.forEach((currChaseInfo) => {
-        const { x, y, dir } = currChaseInfo;
+    });
+
+    effectiveChase.forEach((currChaseInfo) => {
+        const { x, y, dir, srcFloor } = currChaseInfo;
+
+        // 跨层追猎：怪物在相邻楼层
+        if (srcFloor && srcFloor !== core.status.floorId) {
+            try {
+                var sm = core.status.maps[srcFloor];
+                if (!sm || !sm.map || !sm.map[y] || !sm.map[y][x]) return;
+                var val = sm.map[y][x];
+                if (!core.control.controldata.cubeStep) return;
+                var stepTo = core.control.controldata.cubeStep(srcFloor, x, y, dir);
+                if (!stepTo || !stepTo.floorId || stepTo.x === undefined || stepTo.y === undefined) return;
+
+                // 检查目标位置是否可移动（与本层追猎一致）
+                var _targetBlock = core.getBlock(stepTo.x, stepTo.y, stepTo.floorId, false);
+                var _canMoveTo = !_targetBlock;
+                if (_targetBlock && _targetBlock.event) {
+                    _canMoveTo = core.control.getChaseType().includes(_targetBlock.event.cls) && !_targetBlock.event.data;
+                } else if (_targetBlock) {
+                    _canMoveTo = false;
+                }
+                if (!_canMoveTo) return;
+
+                // 使用 cubeMap.moveBlockAcross 执行跨层移动
+                // moveBlockAcross 内部调用 core.removeBlock + core.setBlock
+                // 自动更新 map/blocks/mapBlockObjs 缓存 + redrawMap + updateCheckBlock
+                if (core.plugin && core.plugin.cubeMap && core.plugin.cubeMap.moveBlockAcross) {
+                    core.plugin.cubeMap.moveBlockAcross(srcFloor, x, y, stepTo.floorId, stepTo.x, stepTo.y);
+                } else {
+                    // fallback：直接改 map
+                    var dm = core.status.maps[stepTo.floorId];
+                    if (!dm || !dm.map) return;
+                    if (!dm.map[stepTo.y]) dm.map[stepTo.y] = [];
+                    dm.map[stepTo.y][stepTo.x] = val;
+                    sm.map[y][x] = 0;
+                    if (sm.blocks) { sm.blocks = null; core.extractBlocks(srcFloor); }
+                    if (dm.blocks) { dm.blocks = null; core.extractBlocks(stepTo.floorId); }
+                    if (core.status.mapBlockObjs) {
+                        core.status.mapBlockObjs[stepTo.floorId] = null;
+                        core.status.mapBlockObjs[srcFloor] = null;
+                        core.getMapBlocksObj(stepTo.floorId);
+                        core.getMapBlocksObj(srcFloor);
+                    }
+                    if (stepTo.floorId === core.status.floorId) core.redrawMap();
+                    core.updateCheckBlock(core.status.floorId);
+                }
+            } catch(e) {
+                console.error('跨层追猎执行出错:', e);
+            }
+            return;
+        }
+
+        // 本层追猎（原逻辑）
         const [aimx, aimy] = [x + core.utils.scan[dir].x, y + core.utils.scan[dir].y];
         if (!(aimx === hx && aimy === hy)) {
             actions.push({
@@ -1323,7 +1453,7 @@ control.prototype._checkBlock_chase = function (chase) {
                                 "type": "if", "condition": "[\"enemys\",\"enemy48\"].includes(core.getFlag('chaseAimCls'))",
                                 "true": [
                                     {
-                                        "type": "function", "function": `function () { 
+                                        "type": "function", "function": `function () {
                                         core.exchangeBlock(${x}, ${y}, ${aimx}, ${aimy}, '${dir}', 100, null); }`
                                     },
                                 ],
@@ -1465,6 +1595,7 @@ control.prototype._updateDamage_damage = function (floorId, onMap) {
 control.prototype._updateDamage_extraDamage = function (floorId, onMap) {
     core.status.damage.extraData = [];
     if (!core.flags.displayExtraDamage) return;
+    if (!core.status.checkBlock || !core.status.checkBlock.damage) return;
 
     var width = core.floors[floorId].width, height = core.floors[floorId].height;
     var startX = onMap && core.bigmap.v2 ? Math.max(0, core.bigmap.posX - core.bigmap.extend) : 0;
@@ -2879,6 +3010,47 @@ control.prototype.clearRouteFolding = function () {
     core.status.routeFolding = {};
 }
 
+////// 录像折叠隐藏状态指纹 //////
+// 折叠的本质是“回到相同位置且世界状态完全一致时，可直接复用更早的录像前缀”。
+// 旧逻辑只比较数值类勇士属性，忽略了下列会改变“通行/战斗/楼层判定”的隐藏状态，
+// 导致开门、破墙、跨层瞬移后回到相同(x,y,dir)时错误截短录像，使回放在后续步骤失败。
+// 这里对隐藏状态做指纹化，只有指纹完全一致才允许折叠（参照本文件 3017 行原实现）。
+control.prototype._getRouteFoldingSignature = function () {
+    var hero = core.status.hero || {};
+    var flags = hero.flags || {};
+    var items = hero.items || {};
+    var relevant = {
+        floor: core.status.floorId,
+        // 图块强制启用/禁用（开门、破墙、setBlockDisabled 等）
+        disabled: flags.__disabled__ || {},
+        // 被整体移除的楼层
+        removed: flags.__removed__ || [],
+        // 图块透明度/滤镜（部分事件会改变其通行表现）
+        opacity: flags.__opacity__ || {},
+        filter: flags.__filter__ || {},
+        // 怪物点数值改写（影响战斗结算）
+        enemyOnPoint: flags.enemyOnPoint || {},
+        // 已访问楼层（影响楼传可用性与绘制）
+        visited: flags.__visited__ || {},
+        // 隐藏楼层相关
+        hideFloors: flags.hideFloors || {},
+        // 影响属性/战斗结算的减益状态
+        weak: !!core.hasFlag('weak'),
+        poison: !!core.hasFlag('poison'),
+        freeze: !!core.hasFlag('freeze'),
+        confuse: !!core.hasFlag('confuse'),
+        curse: !!core.hasFlag('curse'),
+        // 持有道具（钥匙/宝石/血瓶/装备，影响开门与通行）
+        items: items
+    };
+    try {
+        return JSON.stringify(relevant);
+    } catch (e) {
+        // 极端情况下退化为“永不折叠”，保证回放正确优先于录像体积优化
+        return 'SIGNATURE_ERR';
+    }
+}
+
 ////// 检查录像折叠 //////
 control.prototype.checkRouteFolding = function () {
     // 未开启、未开始游戏、录像播放中、正在事件中：不执行
@@ -2888,11 +3060,14 @@ control.prototype.checkRouteFolding = function () {
     var hero = core.clone(core.status.hero, function (name, value) {
         return name != 'steps' && typeof value == 'number';
     });
-    var index = [core.getHeroLoc('x'), core.getHeroLoc('y'), core.getHeroLoc('direction').charAt(0)].join(',');
+    var signature = this._getRouteFoldingSignature();
+    // 折叠键加入楼层：不同楼层的同一(x,y,dir)视为不同位置，避免跨层污染折叠缓存
+    var index = [core.status.floorId, core.getHeroLoc('x'), core.getHeroLoc('y'), core.getHeroLoc('direction').charAt(0)].join(',');
     core.status.routeFolding = core.status.routeFolding || {};
     if (core.status.routeFolding[index]) {
         var one = core.status.routeFolding[index];
-        if (core.same(one.hero, hero) && one.length < core.status.route.length) {
+        // 必须隐藏状态指纹也一致，才允许折叠；否则视为“状态已变化”，不截断
+        if (one.signature === signature && core.same(one.hero, hero) && one.length < core.status.route.length) {
             Object.keys(core.status.routeFolding).forEach(function (v) {
                 if (core.status.routeFolding[v].length >= one.length) delete core.status.routeFolding[v];
             });
@@ -2900,7 +3075,7 @@ control.prototype.checkRouteFolding = function () {
             this._bindRoutePush();
         }
     }
-    core.status.routeFolding[index] = { hero: hero, length: core.status.route.length };
+    core.status.routeFolding[index] = { hero: hero, signature: signature, length: core.status.route.length };
 }
 
 // ------ 天气，色调，BGM ------ //
@@ -3852,3 +4027,6 @@ control.prototype._resize_tools = function (obj) {
         if (!obj.is15x15) core.dom.hard.style.marginTop = 0;
     }
 }
+
+
+

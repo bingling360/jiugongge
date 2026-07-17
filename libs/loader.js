@@ -107,16 +107,32 @@ loader.prototype._loadMaterials_async = function (onprogress, onfinished) {
     });
 }
 
-loader.prototype._loadMaterials_afterLoad = function () {
-    var images = core.splitImage(core.material.images['icons']);
-    for (var key in core.statusBar.icons) {
-        if (typeof core.statusBar.icons[key] == 'number') {
-            core.statusBar.icons[key] = images[core.statusBar.icons[key]];
-            if (core.statusBar.image[key] != null)
-                core.statusBar.image[key].src = core.statusBar.icons[key].src;
+    loader.prototype._loadMaterials_afterLoad = function () {
+        var images = core.splitImage(core.material.images['icons']);
+        for (var key in core.statusBar.icons) {
+            if (typeof core.statusBar.icons[key] == 'number') {
+                core.statusBar.icons[key] = images[core.statusBar.icons[key]];
+                if (core.statusBar.image[key] != null)
+                    core.statusBar.image[key].src = core.statusBar.icons[key].src;
+            }
         }
+
+        // 将状态栏“楼传”按钮的素材替换为 id 为 portal 的图块素材（animates 类，第 17 帧）
+        try {
+            var portalSheet = core.material.images['animates'];
+            var portalIdx = (core.material.icons && core.material.icons['animates']) ? core.material.icons['animates']['portal'] : null;
+            if (portalSheet && portalIdx != null && core.statusBar.image && core.statusBar.image.fly) {
+                var ph = 32; // 单帧高度
+                var pc = document.createElement('canvas');
+                pc.width = 32; pc.height = 32;
+                var pctx = pc.getContext('2d');
+                pctx.drawImage(portalSheet, 0, portalIdx * ph, 32, ph, 0, 0, 32, 32);
+                var portalURL = pc.toDataURL('image/png');
+                core.statusBar.image.fly.src = portalURL;
+                if (core.statusBar.icons.fly instanceof Image) core.statusBar.icons.fly.src = portalURL;
+            }
+        } catch (e) {}
     }
-}
 
 // ------ 加载使用的图片 ------ //
 

@@ -43,6 +43,8 @@ var functions_d6ad677b_427a_4623_b50f_a445a3b0ef8a =
 			for (var key in globalFlags)
 				core.flags[key] = globalFlags[key];
 			core._init_sys_flags();
+			// 初始化 checkBlock 默认值，防止首次调用 getCheckBlock 前访问报错
+			core.status.checkBlock = { damage: {}, type: {}, repulse: {}, ambush: {}, chase: {}, needCache: false, cache: {} };
 			// 初始化界面，状态栏等
 			core.resize();
 			// 状态栏是否显示
@@ -104,7 +106,7 @@ var functions_d6ad677b_427a_4623_b50f_a445a3b0ef8a =
 			})
 		},
 		"changingFloor": function (floorId, heroLoc) {
-			// 正在切换楼层过程中执行的操作；此函数的执行时间是“屏幕完全变黑“的那一刻
+			// 正在切换楼层过程中执行的操作；此函数的执行时间是"屏幕完全变黑"的那一刻
 			// floorId为要切换到的楼层ID；heroLoc表示勇士切换到的位置
 
 			// ---------- 此时还没有进行切换，当前floorId还是原来的 ---------- //
@@ -239,7 +241,7 @@ var functions_d6ad677b_427a_4623_b50f_a445a3b0ef8a =
 		},
 		"beforeBattle": function (enemyId, x, y) {
 			// 战斗前触发的事件，可以加上一些战前特效（详见下面支援的例子）
-			// 此函数在“检测能否战斗和自动存档”【之后】执行。如果需要更早的战前事件，请在插件中覆重写 core.events.doSystemEvent 函数。
+			// 此函数在"检测能否战斗和自动存档"【之后】执行。如果需要更早的战前事件，请在插件中覆重写 core.events.doSystemEvent 函数。
 			// 返回true则将继续战斗，返回false将不再战斗。
 
 			// ------ 支援技能 ------ //
@@ -560,6 +562,7 @@ var functions_d6ad677b_427a_4623_b50f_a445a3b0ef8a =
 				[27, "捕捉", function (enemy) { return "当走到怪物周围" + (enemy.zoneSquare ? "九宫格" : "十字") + "时会强制进行战斗。"; }, "#c0ddbb"],
 				[28, "追猎", "角色行走一步后若处在怪物视线内，怪物向角色移动一步。怪物走入角色十字1格以内时主动与角色开战。", "#DC143C"],
 				[29, "败移", "战后若角色面对的行/列有其它怪物，该怪物不会被击败，而是与其中最近的怪物交换位置。", "#c0ddbb"],
+				[31, "吸噬", function (enemy) { return "怪物每次攻击造成的伤害都会有" + Math.floor(enemy.absorbValue * 100 || 0) + "%用来回复自身，护盾下降不算伤害。"; }],
 			];
 		},
 		"getEnemyInfo": function (enemy, hero, x, y, floorId) {
@@ -784,6 +787,25 @@ var functions_d6ad677b_427a_4623_b50f_a445a3b0ef8a =
 			// 勇士的攻击回合数；为怪物生命除以每回合伤害向上取整
 			var turn = Math.ceil(mon_hp / hero_per_damage);
 
+			// 吸噬
+			if (core.hasSpecial(mon_special, 31) && per_damage > 0) {
+				var eatimes = Math.ceil(hero_mdef / per_damage);
+				var aa = eatimes * per_damage - hero_mdef;
+				var mon_hpa
+				mon_hpa = mon_hp - eatimes * hero_per_damage;
+				if (mon_hpa > 0) {
+					var hero_per_damageb;
+					mon_hpa += Math.max(aa * (enemy.absorbValue * 1 || 0), 0);
+					if (hero_per_damage < mon_hpa) {
+						var drain = Math.max(per_damage * (enemy.absorbValue * 1 || 0), 0);
+						hero_per_damageb = hero_per_damage - drain;
+						mon_hp += (turn - eatimes) * Math.max(per_damage * (enemy.absorbValue * 1 || 0), 0) + mon_hpa;
+						if (hero_per_damageb <= 0) { return null; }
+						turn = eatimes + Math.ceil((mon_hpa - drain) / hero_per_damageb);
+					}
+				}
+			}
+
 			// ------ 支援 ----- //
 			// 这个递归最好想明白为什么，flag:__extraTurn__是怎么用的
 			var guards = core.getFlag("__guards__" + x + "_" + y, enemyInfo.guards);
@@ -920,9 +942,9 @@ var functions_d6ad677b_427a_4623_b50f_a445a3b0ef8a =
 				case 90: // Z：转向
 					core.turnHero();
 					break;
-				case 86: // V：打开快捷商店列表
-					core.openQuickShop(true);
-					break;
+				// case 86: // V：打开快捷商店列表（已禁用快捷键）
+			// 	core.openQuickShop(true);
+			// 	break;
 				case 32: // SPACE：轻按
 					core.getNextItem();
 					break;
@@ -1110,7 +1132,7 @@ var functions_d6ad677b_427a_4623_b50f_a445a3b0ef8a =
 	},
 	"control": {
 		"saveData": function () {
-			// 存档操作，此函数应该返回“具体要存档的内容”
+			// 存档操作，此函数应该返回"具体要存档的内容"
 
 			// 差异化存储values
 			var values = {};
@@ -1176,7 +1198,7 @@ var functions_d6ad677b_427a_4623_b50f_a445a3b0ef8a =
 		"getStatusLabel": function (name) {
 			// 返回某个状态英文名的对应中文标签，如atk -> 攻击，def -> 防御等。
 			// 请注意此项仅影响 libs/ 下的内容（如绘制怪物手册、数据统计等）
-			// 自行定义的（比如获得道具效果）中用到的“攻击+3”等需要自己去对应地方修改
+			// 自行定义的（比如获得道具效果）中用到的"攻击+3"等需要自己去对应地方修改
 
 			return {
 				name: "名称",
@@ -1423,13 +1445,28 @@ var functions_d6ad677b_427a_4623_b50f_a445a3b0ef8a =
 						// 检查下一个点是否存在事件（从而判定是否移动）
 						var rnx = x + scan[rdir].x,
 							rny = y + scan[rdir].y;
-						if (rnx < 0 || rnx >= width || rny < 0 || rny >= height) continue;
-						// 如需禁止阻击被推到已隐藏的事件处（如重生怪处），可将这一句的false改为true
-						if (core.getBlock(rnx, rny, floorId, false) != null) continue;
-						if (core.utils.scan[rdir] && !core.canMoveHero(x, y, rdir, floorId)) continue;
-						repulse[currloc] = (repulse[currloc] || []).concat([
-							[x, y, id, rdir]
-						]);
+						// 立方体跨面：越界时不跳过，记录带跨面标记的阻击
+						if (rnx >= 0 && rnx < width && rny >= 0 && rny < height) {
+							// 如需禁止阻击被推到已隐藏的事件处（如重生怪处），可将这一句的false改为true
+							if (core.getBlock(rnx, rny, floorId, false) != null) continue;
+							if (core.utils.scan[rdir] && !core.canMoveHero(x, y, rdir, floorId)) continue;
+							repulse[currloc] = (repulse[currloc] || []).concat([
+								[x, y, id, rdir]
+							]);
+						} else {
+							// 越界阻击：记录跨面信息，由 _checkBlock_repulse 处理
+							// 注意：这里传 floorId（当前层），cubeStep 会自动跨面到相邻层
+							var dest = core.control ? core.control.controldata.cubeStep(floorId, x, y, rdir) : null;
+							if (dest && dest.floorId !== floorId) {
+								// 跨层阻击：怪物从当前位置（跨面后）向 rdir 方向移动一格
+								// t = [x, y, id, rdir, srcFloor, destFloor, destX, destY]
+								// srcFloor=floorId（当前层，因为 x,y 已经越界，代表相邻面的边缘）
+								// destFloor=dest.floorId, destX=dest.x, destY=dest.y
+								repulse[currloc] = (repulse[currloc] || []).concat([
+									[x, y, id, rdir, floorId, dest.floorId, dest.x, dest.y]
+								]);
+							}
+						}
 					}
 				}
 
@@ -1471,13 +1508,14 @@ var functions_d6ad677b_427a_4623_b50f_a445a3b0ef8a =
 				}
 
 				// 追猎
-				if (enemy && core.hasSpecial(enemy.special, 28)) {
+				// 如果要防止追猎效果，可以直接简单的将 flag:no_chase 设为true
+				if (enemy && core.hasSpecial(enemy.special, 28) && !core.hasFlag("no_chase")) {
 					let scan = core.utils.scan;
 					for (const dir in scan) {
 						for (let i = 1; ; i++) {
 							const [nx, ny] = [x + i * scan[dir].x, y + i * scan[dir].y];
 							const currloc = nx + "," + ny;
-							if (nx < 0 || nx > core.__SIZE__ - 1 || ny < 0 || ny > core.__SIZE__ - 1) break;
+							if (nx < 0 || nx >= width || ny < 0 || ny >= height) break;
 							if (!canSeeThrough(nx, ny)) break;
 							if (!chase[currloc]) chase[currloc] = [];
 							chase[currloc].push({ x, y, dir });
@@ -1504,29 +1542,85 @@ var functions_d6ad677b_427a_4623_b50f_a445a3b0ef8a =
 				if ((core.status.event.id == 'book' || core.status.event.id == 'bool-detail') && core.status.event.ui) needCache = true;
 			}
 
+			// 立方体跨层夹击：跨面边缘上的格子也可能被相邻面的怪物夹击。
+			var CUBE_FACES_FOR_BETWEEN_ATTACK = ["MT0","MT1","MT2","MT3","MT4","MT5"];
+			var isCubeFloorForBetweenAttack = CUBE_FACES_FOR_BETWEEN_ATTACK.indexOf(floorId) >= 0
+				&& core.control && core.control.controldata && core.control.controldata.cubeStep;
+			var cubeCrossInfo = core.status.__cubeCrossInfo;
+			var cubeCrossToFloor = cubeCrossInfo && (cubeCrossInfo.toFloor || cubeCrossInfo.floorId);
+			var cubeCrossToX = cubeCrossInfo && (cubeCrossInfo.toX != null ? cubeCrossInfo.toX : cubeCrossInfo.x);
+			var cubeCrossToY = cubeCrossInfo && (cubeCrossInfo.toY != null ? cubeCrossInfo.toY : cubeCrossInfo.y);
+			var cubeCrossFromX = cubeCrossInfo && cubeCrossInfo.fromX;
+			var cubeCrossFromY = cubeCrossInfo && cubeCrossInfo.fromY;
+			var isCubeCrossLandingLoc = function (x, y) {
+				return cubeCrossInfo && cubeCrossToX == x && cubeCrossToY == y;
+			};
+			var isCubeCrossFakeSourceLoc = function (x, y) {
+				return isCubeCrossLandingLoc(x, y) && cubeCrossInfo.fromFloor == floorId
+					&& (cubeCrossFromX != x || cubeCrossFromY != y);
+			};
+			var isCubeCrossTargetLandingLoc = function (x, y) {
+				return isCubeCrossLandingLoc(x, y) && cubeCrossToFloor == floorId;
+			};
+			if (isCubeFloorForBetweenAttack && !core.hasFlag('no_betweenAttack')) {
+				for (var bx = 0; bx < width; bx++) {
+					for (var by = 0; by < height; by++) {
+						betweenAttackLocs[bx + "," + by] = true;
+					}
+				}
+			}
+			var getBetweenAttackBlock = function (x, y, dir) {
+				if (!isCubeFloorForBetweenAttack) {
+					var d = core.utils.scan[dir];
+					return {
+						block: blocks[(x + d.x) + "," + (y + d.y)],
+						crossed: false
+					};
+				}
+				var isCurrentCrossLanding = isCubeCrossTargetLandingLoc(x, y);
+				if (isCurrentCrossLanding && cubeCrossInfo.ignoreDir == dir) {
+					return null;
+				}
+				var p = core.control.controldata.cubeStep(floorId, x, y, dir);
+				if (!p) return null;
+				return {
+					block: core.getBlock(p.x, p.y, p.floorId, false),
+					crossed: p.floorId !== floorId
+				};
+			};
+
 			// 对每个可能的夹击点计算夹击伤害
 			for (var loc in betweenAttackLocs) {
 				let xy = loc.split(","),
 					x = parseInt(xy[0]),
 					y = parseInt(xy[1]);
+				if (isCubeCrossFakeSourceLoc(x, y)) {
+					continue;
+				}
 				// 夹击怪物的ID
 				var enemyId1 = null,
 					enemyId2 = null;
 				// 检查左右夹击
-				var leftBlock = blocks[(x - 1) + "," + y],
-					rightBlock = blocks[(x + 1) + "," + y];
+				var leftInfo = getBetweenAttackBlock(x, y, "left"),
+					rightInfo = getBetweenAttackBlock(x, y, "right");
+				var leftBlock = leftInfo && leftInfo.block,
+					rightBlock = rightInfo && rightInfo.block;
 				var leftId = core.getFaceDownId(leftBlock),
 					rightId = core.getFaceDownId(rightBlock);
-				if (leftBlock && !leftBlock.disable && rightBlock && !rightBlock.disable && leftId == rightId) {
+				if (leftInfo && rightInfo
+					&& leftBlock && !leftBlock.disable && rightBlock && !rightBlock.disable && leftId == rightId) {
 					if (core.hasSpecial(leftId, 16))
 						enemyId1 = leftId;
 				}
 				// 检查上下夹击
-				var topBlock = blocks[x + "," + (y - 1)],
-					bottomBlock = blocks[x + "," + (y + 1)];
+				var topInfo = getBetweenAttackBlock(x, y, "up"),
+					bottomInfo = getBetweenAttackBlock(x, y, "down");
+				var topBlock = topInfo && topInfo.block,
+					bottomBlock = bottomInfo && bottomInfo.block;
 				var topId = core.getFaceDownId(topBlock),
 					bottomId = core.getFaceDownId(bottomBlock);
-				if (topBlock && !topBlock.disable && bottomBlock && !bottomBlock.disable && topId == bottomId) {
+				if (topInfo && bottomInfo
+					&& topBlock && !topBlock.disable && bottomBlock && !bottomBlock.disable && topId == bottomId) {
 					if (core.hasSpecial(topId, 16))
 						enemyId2 = topId;
 				}
@@ -1554,6 +1648,7 @@ var functions_d6ad677b_427a_4623_b50f_a445a3b0ef8a =
 				}
 			}
 
+
 			// 取消注释下面这一段可以让护盾抵御阻激夹域伤害
 			/*
 			for (var loc in damage) {
@@ -1562,6 +1657,227 @@ var functions_d6ad677b_427a_4623_b50f_a445a3b0ef8a =
 			*/
 
 			core.flags.canGoDeadZone = canGoDeadZone;
+			// ---- 立方体跨面处理：遍历相邻面怪物，投影到当前面 ----
+			try {
+			var CUBE_FACES = ["MT0","MT1","MT2","MT3","MT4","MT5"];
+			if (CUBE_FACES.indexOf(floorId) >= 0) {
+				for (var sf = 0; sf < 6; sf++) {
+					var srcF = CUBE_FACES[sf];
+					if (srcF == floorId) continue;
+					if (!core.status.maps[srcF]) continue;
+					// 判断 srcF 是否为当前楼层的相邻面（追猎只在相邻4面触发，不对面）
+					var isAdjacentToCurrent = false;
+					var _edgesOfCurrent = core.control.controldata.CUBE_EDGES[floorId];
+					if (_edgesOfCurrent) {
+						for (var _ed in _edgesOfCurrent) {
+							if (_edgesOfCurrent[_ed][0] === srcF) { isAdjacentToCurrent = true; break; }
+						}
+					}
+					core.extractBlocks(srcF);
+					var sblocks = (core.status.maps[srcF] || {}).blocks;
+					if (!sblocks) continue;
+					for (var b = 0; b < sblocks.length; b++) {
+						var sb = sblocks[b];
+						if (sb.disable) continue;
+						var se = core.getEnemyValue(sb.event.id, null, sb.x, sb.y, srcF);
+						if (!se) continue;
+						// 领域
+						if (core.hasSpecial(se.special, 15) && !core.hasFlag('no_zone')) {
+							var zr = se.range || 1, zsq = se.zoneSquare || false;
+							for (var zx = -zr; zx <= zr; zx++) {
+								for (var zy = -zr; zy <= zr; zy++) {
+									if (zx == 0 && zy == 0) continue;
+									if (!zsq && Math.abs(zx) + Math.abs(zy) > zr) continue;
+									var zp = core.control.controldata.cubeProject(srcF, sb.x, sb.y, zx, zy);
+									if (zp && zp.floorId == floorId) {
+										var zk = zp.x + "," + zp.y;
+										damage[zk] = (damage[zk] || 0) + (se.zone || 0);
+										type[zk] = type[zk] || {};
+										type[zk]["领域伤害"] = true;
+									}
+								}
+							}
+						}
+						// 激光（跨层）
+						// 正确逻辑：从怪物位置向四个方向逐步走，直到走不动为止
+						// 每一步若落在当前楼层，则添加激光伤害
+						// 用 visited 防止在正方体表面无限循环
+						if (core.hasSpecial(se.special, 24) && !core.hasFlag('no_laser')) {
+							var ld = se.laser || 0;
+							// 维持“直线”穿越：跨面时根据目标边决定在新面上保持还是翻转方向。
+							// 目标边与当前方向“相反”（如 up→down / left→right）=> 直线穿越，方向不变；
+							// 目标边与当前方向“相同”（如 up→up / left→left）=> 旋转穿越，方向需翻转，
+							// 否则光束会在 top↔back（或 bottom↔back）之间来回反弹，无法绕成立方体整圈。
+							var _laserDir = function(srcF, sx, sy, dir, floorId, damage, type, ld) {
+								var visited = {};
+								var OPP = { up: 'down', down: 'up', left: 'right', right: 'left' };
+								var f = srcF, cx = sx, cy = sy, d = dir;
+								for (var step = 0; step < 200; step++) {
+									var key = f + "," + cx + "," + cy;
+									if (visited[key]) break; // 回到已访问位置，停止
+									visited[key] = true;
+									var s = core.control.controldata.cubeStep(f, cx, cy, d);
+									if (!s) break;
+									if (s.floorId !== f) {
+										// 跨面：根据目标边判断是否旋转穿越，若是则翻转方向以维持直线
+										var edge = (core.control.controldata.CUBE_EDGES[f] || {})[d];
+										if (edge && edge[1] === d) d = OPP[d];
+									}
+									f = s.floorId; cx = s.x; cy = s.y;
+									if (f === floorId) {
+										var lk = cx + "," + cy;
+										damage[lk] = (damage[lk] || 0) + ld;
+										type[lk] = type[lk] || {};
+										type[lk]["激光伤害"] = true;
+									}
+								}
+							};
+							// 向四个方向发射激光（不包括怪物自身位置）
+							_laserDir(srcF, sb.x, sb.y, "left",  floorId, damage, type, ld);
+							_laserDir(srcF, sb.x, sb.y, "right", floorId, damage, type, ld);
+							_laserDir(srcF, sb.x, sb.y, "up",    floorId, damage, type, ld);
+							_laserDir(srcF, sb.x, sb.y, "down",  floorId, damage, type, ld);
+						}
+						// 追猎（跨层）
+						// 规则：玩家在同行/同列移动一格，怪物向玩家方向移动一格
+						// 只记录"立体距离最近方向"的追猎，距离相等不记录（不移动）
+						// 注意：跨面后方向必须保持一致（直线扫描），坐标旋转的跨面不算同行同列
+						// 例如 MT4 right -> MT3 up 是坐标旋转，不算同行同列，不触发追猎
+						// 而 MT0 right -> MT3 left 是直线扫描（y 不变），算同行，触发追猎
+						// 限制：只在相邻4面触发（不对面），且路径上无遮挡
+						if (core.hasSpecial(se.special, 28) && !core.hasFlag('no_chase') && isAdjacentToCurrent) {
+						// 判断跨面后方向是否保持一致（直线扫描）
+						// dir 和 targetEdge 必须都是水平或都是垂直
+						var _isStraightCross = function(fromF, dir) {
+							var e = core.control.controldata.CUBE_EDGES[fromF];
+							if (!e || !e[dir]) return false;
+							var te = e[dir][1];
+							var dirH = (dir === "left" || dir === "right");
+							var teH = (te === "left" || te === "right");
+							return dirH === teH; // 都是水平或都是垂直，方向不变
+						};
+						// 检查落点是否被遮挡（与本层追猎 canSeeThrough 逻辑一致）
+						// 空地可穿过；cls 在 getChaseType() 中且无 event.data 时可穿过（道具可穿过）
+						// 墙/怪物/NPC/门等阻断
+						var _isBlocked = function(x, y, fid) {
+							var block = core.getBlock(x, y, fid, false);
+							if (block === null || !block || !block.event) return false;
+							if (core.control.getChaseType().includes(block.event.cls) && !block.event.data) return false;
+							return true;
+						};
+						// 第一步：收集四个方向到达当前层的最近 step
+						var _projDir = function(srcF, sx, sy, dir, floorId) {
+							var visited = {}, f = srcF, cx = sx, cy = sy;
+							for (var step = 0; step < 200; step++) {
+								var key = f + "," + cx + "," + cy;
+								if (visited[key]) break;
+								visited[key] = true;
+								var nextS = core.control.controldata.cubeStep(f, cx, cy, dir);
+								if (!nextS) break;
+								// 跨面必须是直线扫描（dir 与 targetEdge 同为水平或垂直），坐标旋转不算同行同列
+								if (nextS.floorId !== f && !_isStraightCross(f, dir)) break;
+								// 检查路径遮挡（怪物和玩家之间不能有墙/怪物/NPC等）
+								if (_isBlocked(nextS.x, nextS.y, nextS.floorId)) break;
+								f = nextS.floorId; cx = nextS.x; cy = nextS.y;
+								if (f === floorId) return { dir: dir, step: step + 1 };
+							}
+							return null;
+						};
+						var dirs = ["left", "right", "up", "down"];
+						var projections = [];
+						dirs.forEach(function(d) {
+							var p = _projDir(srcF, sb.x, sb.y, d, floorId);
+							if (p) projections.push(p);
+						});
+						// 第二步：选 step 最小的方向；多个方向 step 相等则不记录（距离相等不移动）
+						if (projections.length > 0) {
+							projections.sort(function(a, b) { return a.step - b.step; });
+							var minStep = projections[0].step;
+							var nearest = projections.filter(function(p) { return p.step === minStep; });
+							if (nearest.length === 1) {
+								var bestDir = nearest[0].dir;
+								// 第三步：沿最近方向扫描，到达当前层后在当前层内沿两个方向记录整条同轴线
+								var _recordChase = function(rx, ry, rstep) {
+									var ck = rx + "," + ry;
+									if (!chase[ck]) chase[ck] = [];
+									chase[ck].push({
+										x: sb.x, y: sb.y, dir: bestDir,
+										srcFloor: srcF, step: rstep
+									});
+								};
+								// 在当前层内沿指定方向扫描，记录每个位置（遇到遮挡或跨面停止）
+								var _scanInFloor = function(startF, startX, startY, scanDir, startStep) {
+									var sf = startF, sx = startX, sy = startY, sstep = startStep;
+									for (var i = 0; i < 200; i++) {
+										var ss = core.control.controldata.cubeStep(sf, sx, sy, scanDir);
+										if (!ss) break;
+										if (ss.floorId !== sf) break; // 跨面离开当前层，停止
+										if (_isBlocked(ss.x, ss.y, ss.floorId)) break;
+										sf = ss.floorId; sx = ss.x; sy = ss.y; sstep++;
+										_recordChase(sx, sy, sstep);
+									}
+								};
+								var _reverseDir = {up:"down", down:"up", left:"right", right:"left"}[bestDir];
+								var visited = {}, f = srcF, cx = sb.x, cy = sb.y;
+								for (var step = 0; step < 200; step++) {
+									var key = f + "," + cx + "," + cy;
+									if (visited[key]) break;
+									visited[key] = true;
+								var s = core.control.controldata.cubeStep(f, cx, cy, bestDir);
+								if (!s) break;
+								// 跨面必须是直线扫描
+								if (s.floorId !== f && !_isStraightCross(f, bestDir)) break;
+								// 检查路径遮挡
+								if (_isBlocked(s.x, s.y, s.floorId)) break;
+								f = s.floorId; cx = s.x; cy = s.y;
+									if (f === floorId) {
+										// 到达当前层：记录跨面进入点 + 在当前层内沿两个方向扫描整条线
+										_recordChase(cx, cy, step + 1);
+										console.log('[跨层追猎] 记录:', srcF, '('+sb.x+','+sb.y+')', 'dir='+bestDir, '-> '+floorId, '进入点=('+cx+','+cy+')');
+										_scanInFloor(f, cx, cy, bestDir, step + 1);
+										_scanInFloor(f, cx, cy, _reverseDir, step + 1);
+										break; // 已记录整条线，停止
+									}
+								}
+							} else {
+								console.log('[跨层追猎] 怪物', srcF, '('+sb.x+','+sb.y+')', '多方向距离相等(step='+minStep+')，不追猎');
+							}
+						}
+					}
+					// 阻击（伤害+移动）
+					if (core.hasSpecial(se.special, 18) && !core.hasFlag('no_repulse')) {
+						var rs = se.zoneSquare ? core.utils.scan2 : core.utils.scan;
+						for (var rd in rs) {
+							var rp = core.control.controldata.cubeProject(srcF, sb.x, sb.y, rs[rd].x, rs[rd].y);
+							if (rp && rp.floorId == floorId) {
+									var rk = rp.x + "," + rp.y;
+									// 伤害
+									damage[rk] = (damage[rk] || 0) + (se.repulse || 0);
+									type[rk] = type[rk] || {};
+									type[rk]["阻击伤害"] = true;
+
+								// 移动：计算怪物被推后出现在源楼层的哪个位置
+								var rdir = core.turnDirection(":back", rd);
+								// 怪物在源楼层向 rdir 方向推一格，计算目标位置
+								var pushTo = core.control.controldata.cubeStep(srcF, sb.x, sb.y, rdir);
+								if (pushTo) {
+									// 写入跨层移动记录：怪物从 srcF 被推到 pushTo 的位置
+									// 注意：使用 push，不要用 concat（避免数组被展平）
+									if (!repulse[rk]) repulse[rk] = [];
+									repulse[rk].push([
+										sb.x, sb.y, sb.event.id, rdir,
+										srcF,           // 源楼层
+										pushTo.floorId, // 被推到的楼层
+										pushTo.x, pushTo.y  // 被推到的坐标
+									]);
+								}
+								}
+							}
+						}
+					}
+				}
+			}
+			} catch(e) { console.error('跨面处理异常:', e, e.stack); }
 			return {
 				damage: damage,
 				type: type,
@@ -1574,7 +1890,7 @@ var functions_d6ad677b_427a_4623_b50f_a445a3b0ef8a =
 		},
 		"moveOneStep": function (callback) {
 			// 勇士每走一步后执行的操作。callback为行走完毕后的回调
-			// 这个函数执行在“刚走完”的时候，即还没有检查该点的事件和领域伤害等。
+			// 这个函数执行在"刚走完"的时候，即还没有检查该点的事件和领域伤害等。
 			// 请注意：瞬间移动不会执行该函数。如果要控制能否瞬间移动有三种方法：
 			// 1. 将全塔属性中的cannotMoveDirectly这个开关勾上，即可在全塔中全程禁止使用瞬移。
 			// 2, 将楼层属性中的cannotMoveDirectly这个开关勾上，即禁止在该层楼使用瞬移。
@@ -1618,6 +1934,10 @@ var functions_d6ad677b_427a_4623_b50f_a445a3b0ef8a =
 				core.trigger(nowx, nowy, callback);
 			}
 			// 执行目标点的阻激夹域事件
+			// 立方体楼层每步刷新 checkBlock，确保跨层追猎/阻击移动后的怪物新位置被检测到
+			if (core.control.controldata.CUBE_EDGES && core.control.controldata.CUBE_EDGES[core.status.floorId]) {
+				core.updateCheckBlock();
+			}
 			core.checkBlock();
 
 			// 执行目标点的script和事件
@@ -1682,7 +2002,7 @@ var functions_d6ad677b_427a_4623_b50f_a445a3b0ef8a =
 		"parallelDo": function (timestamp) {
 			// 并行事件处理，可以在这里写任何需要并行处理的脚本或事件
 			// 该函数将被系统反复执行，每次执行间隔视浏览器或设备性能而定，一般约为16.6ms一次
-			// 参数timestamp为“从游戏资源加载完毕到当前函数执行时”的时间差，以毫秒为单位
+			// 参数timestamp为"从游戏资源加载完毕到当前函数执行时"的时间差，以毫秒为单位
 
 			// 检查当前是否处于游戏开始状态
 			if (!core.isPlaying()) return;
@@ -1695,6 +2015,65 @@ var functions_d6ad677b_427a_4623_b50f_a445a3b0ef8a =
 					console.error(e);
 				}
 			}
+		},
+		// ========== 立方体跨面工具 ==========
+		// 6个面的边邻接表（与 cubeMap 插件一致）
+		"CUBE_EDGES": {
+			MT0:{up:["MT4","down"],down:["MT5","up"],left:["MT2","right"],right:["MT3","left"]},
+			MT1:{up:["MT4","up"],down:["MT5","down"],left:["MT3","right"],right:["MT2","left"]},
+			MT2:{up:["MT4","left"],down:["MT5","left"],left:["MT1","right"],right:["MT0","left"]},
+			MT3:{up:["MT4","right"],down:["MT5","right"],left:["MT0","right"],right:["MT1","left"]},
+			MT4:{up:["MT1","up"],down:["MT0","up"],left:["MT2","up"],right:["MT3","up"]},
+			MT5:{up:["MT0","down"],down:["MT1","down"],left:["MT2","down"],right:["MT3","down"]}
+		},
+		"CUBE_EDGE_REVERSE": {
+			MT0:{up:false,down:false,left:false,right:false},
+			MT1:{up:true,down:true,left:false,right:false},
+			MT2:{up:false,down:true,left:false,right:false},
+			MT3:{up:true,down:false,left:false,right:false},
+			MT4:{up:true,down:false,left:false,right:true},
+			MT5:{up:false,down:true,left:true,right:false}
+		},
+		// 走一格（含跨面），返回 {floorId,x,y} 或 null
+		"cubeStep": function (floorId, x, y, dir) {
+			var d = core.utils.scan[dir];
+			if (!d) return null;
+			var w = core.floors[floorId].width, h = core.floors[floorId].height;
+			var nx = x + d.x, ny = y + d.y;
+			if (nx >= 0 && nx < w && ny >= 0 && ny < h)
+				return { floorId: floorId, x: nx, y: ny };
+			// 使用 this 访问同一对象中的 CUBE_EDGES
+			var e = (this.CUBE_EDGES[floorId] || {})[dir];
+			if (!e) return null;
+			var tf = e[0], te = e[1];
+			var t = (dir === "left" || dir === "right") ? y : x;
+			var tw = core.floors[tf].width, th = core.floors[tf].height;
+			var max = (te === "left" || te === "right") ? th - 1 : tw - 1;
+			if (((this.CUBE_EDGE_REVERSE[floorId] || {})[dir])) t = max - t;
+			var tx, ty;
+			if (te === "up")    { tx = t; ty = 0; }
+			else if (te === "down")  { tx = t; ty = th - 1; }
+			else if (te === "left")  { tx = 0; ty = t; }
+			else if (te === "right") { tx = tw - 1; ty = t; }
+			else return null;
+			return { floorId: tf, x: Math.max(0, Math.min(tx, tw - 1)), y: Math.max(0, Math.min(ty, th - 1)) };
+		},
+		// 从 (floorId, x, y) 偏移 (dx, dy) 步，返回 {floorId,x,y} 或 null
+		// 使用 core.control.controldata 调用，确保 this 指向正确
+		"cubeProject": function (floorId, x, y, dx, dy) {
+			var ax = Math.abs(dx), ay = Math.abs(dy);
+			var xDir = dx < 0 ? "left" : "right";
+			var yDir = dy < 0 ? "up" : "down";
+			var f = floorId, cx = x, cy = y, s;
+			for (var i = 0; i < ax; i++) {
+				s = core.control.controldata.cubeStep(f, cx, cy, xDir); if (!s) return null;
+				f = s.floorId; cx = s.x; cy = s.y;
+			}
+			for (var j = 0; j < ay; j++) {
+				s = core.control.controldata.cubeStep(f, cx, cy, yDir); if (!s) return null;
+				f = s.floorId; cx = s.x; cy = s.y;
+			}
+			return { floorId: f, x: cx, y: cy };
 		}
 	},
 	"ui": {
@@ -1828,7 +2207,7 @@ var functions_d6ad677b_427a_4623_b50f_a445a3b0ef8a =
 			];
 		},
 		"drawAbout": function () {
-			// 绘制“关于”界面
+			// 绘制"关于"界面
 			core.ui.closePanel();
 			core.lockControl();
 			core.status.event.id = 'about';
@@ -1852,7 +2231,7 @@ var functions_d6ad677b_427a_4623_b50f_a445a3b0ef8a =
 			core.fillText('ui', "版本： " + main.__VERSION__, text_start, top + 80, "#FFFFFF", "bold 17px " + globalAttribute.font);
 			core.fillText('ui', "作者： 艾之葵", text_start, top + 112);
 			core.fillText('ui', 'HTML5魔塔交流群：539113091', text_start, top + 112 + 32);
-			// TODO: 写自己的“关于”页面，每次增加32像素即可
+			// TODO: 写自己的"关于"页面，每次增加32像素即可
 			core.playSound('打开界面');
 		}
 	}

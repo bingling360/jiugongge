@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html>
 <head>
     <meta http-equiv='content-type' content='text/html' charset='utf-8'>
@@ -25,21 +25,30 @@
         var startImageBackgroundDiv = document.getElementById('startImageBackgroundDiv');
         var startImageLogo = document.getElementById('startImageLogo');
         var startImageDiv = document.getElementById('startImageDiv');
-        startImageLogo.onload = function () {
+        var hideTimer = null;
+        var animationDone = false;
+        function hideStartScreen() {
+            if (animationDone) return;
+            animationDone = true;
+            if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+            startImageBackgroundDiv.style.display = 'none';
+            startImageLogo.classList.remove("startImageAnimation");
+            startImageDiv.classList.remove("startImageDivAnimation");
+        }
+        function showAndAnimate() {
             startImageBackgroundDiv.style.display = 'block';
-            var onAnimationEnd = function () {
-                startImageBackgroundDiv.style.display = 'none';
-                startImageLogo.classList.remove("startImageAnimation");
-                startImageDiv.classList.remove("startImageDivAnimation");
-            }
+            var onAnimationEnd = function () { hideStartScreen(); };
             startImageDiv.addEventListener("webkitAnimationEnd", onAnimationEnd);
             startImageDiv.addEventListener("animationend", onAnimationEnd);
             startImageLogo.classList.add("startImageAnimation");
             startImageDiv.classList.add("startImageDivAnimation");
-            // 注释下面这句话以禁止单击立刻跳过开场动画
-            startImageBackgroundDiv.onclick = onAnimationEnd;
+            startImageBackgroundDiv.onclick = hideStartScreen;
+            hideTimer = setTimeout(hideStartScreen, 8000);
         }
-        startImageLogo.onerror = function () {}
+        startImageLogo.onload = function () {
+            showAndAnimate();
+        }
+        startImageLogo.onerror = function () { showAndAnimate(); }
         startImageLogo.src = "logo.png";
     })();
 </script>
@@ -141,7 +150,7 @@
             <span class='statusLabel' id='curse' style="color: #C2F4E7;"></span>
         </div>
 
-        <!-- 状态栏canvas化 -->
+        <!-- 鐘舵€佹爮canvas鍖?-->
         <canvas id="statusCanvas" style="position: absolute; left: 0; top: 0;"></canvas>
     </div>
     <div id="toolBar" class="clearfix">
@@ -193,12 +202,12 @@
     </div>
 </div>
 <div id='inputDiv'>
-    <div id='inputDialog'>
-        <p id="inputMessage">请输入文字...</p>
-        <input id='inputBox' type="text" autocomplete="off"/>
-        <button id='inputYes'>确定</button>
-        <button id='inputNo'>取消</button>
-    </div>
+        <div id='inputDialog'>
+            <p id="inputMessage">请输入文字...</p>
+            <input id='inputBox' type="text" autocomplete="off"/>
+            <button id='inputYes'>确定</button>
+            <button id='inputNo'>取消</button>
+        </div>
 </div>
 <!-- injection -->
 <script src='libs/thirdparty/lz-string.min.js'></script>
@@ -210,8 +219,159 @@
 <script src="libs/thirdparty/ogg-vorbis-decoder.min.js"></script>
 <script src="libs/thirdparty/ogg-opus-decoder.min.js"></script>
 <script src="libs/thirdparty/codec-parser.min.js"></script>
-<script id='mainScript' src='main.js'></script>
+<script id='mainScript' src='main.js?v=2.9.2'></script>
 <script>main.init('play'); main.listen();</script>
+<div id='cube-map-overlay' style='display:none;position:fixed;inset:0;z-index:99999;background:#000;'>
+  <button onclick='cubeMapClose()' style='position:absolute;top:16px;right:16px;z-index:10;background:rgba(0,0,0,.5);border:1px solid #4488ff;color:#fff;font-size:24px;width:44px;height:44px;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center'>&#x2715;</button>
+</div>
+<script>
+(function(){
+  var o=document.getElementById('cube-map-overlay');
+  var iframe=null;
+    function cubeMapOpen(){
+    o.style.display='block';
+    var curFloor=(window.core&&window.core.status&&window.core.status.floorId)?window.core.status.floorId:'MT0';
+    if(!iframe){
+      iframe=document.createElement('iframe');
+      iframe.src='cube-map-viewer.html?floor='+encodeURIComponent(curFloor);
+      iframe.style.cssText='width:100%;height:100%;border:none;';
+      o.appendChild(iframe);
+    } else {
+      // 已加载过：通知查看器刷新为当前楼层的实时状态
+      try{ iframe.contentWindow.postMessage({action:'refreshCubeMap',floor:curFloor},'*'); }catch(err){}
+    }
+  }
+  function cubeMapClose(){o.style.display='none'}
+  function cubeMapToggle(){
+    if(o.style.display!=='none'){o.style.display='none';return}
+    cubeMapOpen();
+  }
+  window.cubeMapOpen=cubeMapOpen;
+  window.cubeMapClose=cubeMapClose;
+  window.cubeMapToggle=cubeMapToggle;
+  document.addEventListener('keydown',function(e){
+    if(e.key!=='c'&&e.key!=='C')return;
+    if(o.style.display!=='none'){o.style.display='none';e.preventDefault();e.stopPropagation();return}
+    var c=window.core;
+    if(!c||!c.isPlaying||!c.isPlaying())return;
+    if(c.status&&c.status.lockControl)return;
+    cubeMapOpen();
+    e.preventDefault();e.stopPropagation()
+  },true);
+  document.addEventListener('keydown',function(e){
+    if(e.key==='Escape'&&o.style.display!=='none'){o.style.display='none';e.preventDefault();e.stopPropagation()}
+  });
+  window.addEventListener('message',function(e){
+    if(e.data&&e.data.action==='closeCubeMap')o.style.display='none'
+  });
+})();
+</script>
+
+<!-- 竖屏下点底部“虚拟键盘”图标，在原本虚拟键盘出现的位置(底部中间)切换出方向键面板 -->
+<div id="dpadPanel" aria-hidden="true">
+    <div class="dpad-btn" data-code="37" id="dpad-left">◀</div>
+    <div class="dpad-btn" data-code="38" id="dpad-up">▲</div>
+    <div class="dpad-btn" data-code="40" id="dpad-down">▼</div>
+    <div class="dpad-btn" data-code="39" id="dpad-right">▶</div>
+</div>
+<script>
+(function () {
+  // 复用引擎键盘移动逻辑（含长按连续走），方向键码 37=左 38=上 39=右 40=下
+  function setupDpad() {
+    var dpad = document.getElementById('dpadPanel');
+    var kb = document.getElementById('img-keyboard');
+    if (!dpad || !kb) return;
+
+    var active = {}; // 记录当前被按下的方向键码，避免重复触发
+    function press(code) {
+      if (active[code]) return;
+      active[code] = true;
+      if (window.core && window.core.onkeyDown) window.core.onkeyDown({ keyCode: code });
+    }
+    function release(code) {
+      if (!active[code]) return;
+      active[code] = false;
+      if (window.core && window.core.onkeyUp) window.core.onkeyUp({ keyCode: code });
+    }
+    function releaseAll() {
+      Object.keys(active).forEach(function (c) {
+        if (active[c]) {
+          var btn = dpad.querySelector('.dpad-btn[data-code="' + c + '"]');
+          if (btn) btn.classList.remove('pressed');
+          release(parseInt(c, 10));
+        }
+      });
+    }
+
+    dpad.querySelectorAll('.dpad-btn').forEach(function (btn) {
+      var code = parseInt(btn.getAttribute('data-code'), 10);
+      btn.addEventListener('pointerdown', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        btn.classList.add('pressed');
+        press(code);
+      });
+      ['pointerup', 'pointercancel'].forEach(function (ev) {
+        btn.addEventListener(ev, function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          btn.classList.remove('pressed');
+          release(code);
+        });
+      });
+    });
+
+    // 兜底：任意手指/鼠标抬起都释放所有方向，防止“卡住一直走”
+    window.addEventListener('pointerup', releaseAll, true);
+    window.addEventListener('pointercancel', releaseAll, true);
+
+    // 竖屏(手机)且游戏进行中才显示方向键面板，占据“虚拟键盘”原本的位置(底部中间)
+    var dpadHidden = false;
+    function isVert() {
+      return !!(window.core && window.core.domStyle && window.core.domStyle.isVertical);
+    }
+    function isPlaying() {
+      return !!(window.core && window.core.isPlaying && window.core.isPlaying());
+    }
+    function apply() {
+      dpad.style.display = (isVert() && isPlaying() && !dpadHidden) ? 'flex' : 'none';
+    }
+
+    // 改写“虚拟键盘”图标的功能：竖屏下改为切换方向键面板；其余情况保留原虚拟键盘
+    var origOnClick = kb.onclick;
+    kb.onclick = function (e) {
+      if (isVert()) {
+        if (e && e.preventDefault) { e.preventDefault(); e.stopPropagation(); }
+        dpadHidden = !dpadHidden;
+        apply();
+        return;
+      }
+      if (origOnClick) origOnClick.call(kb, e);
+      else if (window.core && window.core.openKeyBoard) window.core.openKeyBoard(true);
+    };
+
+    if (window.core.control && window.core.control.registerResize) {
+      window.core.control.registerResize('dpadPanel', function () { apply(); });
+    }
+    window.addEventListener('resize', apply);
+    apply();
+    setTimeout(apply, 300); // 首次初始化兜底
+
+    // 轮询兜底：开始游戏等不会触发 resize 的场景也能及时显示/隐藏
+    var lastKey = '';
+    setInterval(function () {
+      var key = (isVert() ? 'V' : 'H') + '|' + (isPlaying() ? 'P' : 'N') + '|' + (dpadHidden ? 'H' : 'S');
+      if (key !== lastKey) { lastKey = key; apply(); }
+    }, 400);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', setupDpad);
+  } else {
+    setupDpad();
+  }
+})();
+</script>
 </body>
 
 </html>
