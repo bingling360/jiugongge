@@ -321,7 +321,8 @@ events.prototype.doSystemEvent = function (type, data, callback) {
 }
 
 ////// 触发(x,y)点的事件 //////
-events.prototype.trigger = function (x, y, callback) {
+events.prototype.trigger = function (x, y, callback, floorId) {
+    floorId = floorId || core.status.floorId;
     var _executeCallback = function () {
         // 因为trigger之后还有可能触发其他同步脚本（比如阻激夹域检测）
         // 所以这里强制callback被异步触发
@@ -332,14 +333,16 @@ events.prototype.trigger = function (x, y, callback) {
     }
     if (core.status.gameOver) return _executeCallback();
     if (core.status.event.id == 'action') {
-        core.insertAction({ "type": "function", "function": "function () { core.events._trigger_inAction(" + x + "," + y + "); }", "async": true },
+        core.insertAction({ "type": "function", "function": "function () { core.events._trigger_inAction(" + x + "," + y + "," + JSON.stringify(floorId) + "); }", "async": true },
             null, null, null, true);
         return _executeCallback();
     }
     if (core.status.event.id) return _executeCallback();
 
-    var block = core.getBlock(x, y);
+    var block = core.getBlock(x, y, floorId);
     if (block == null) return _executeCallback();
+    var eventBlock = core.clone(block);
+    eventBlock.floorId = floorId;
 
     // 执行该点的脚本
     if (block.event.script) {
@@ -352,7 +355,7 @@ events.prototype.trigger = function (x, y, callback) {
     // 碰触事件
     if (block.event.event) {
         core.clearRouteFolding();
-        core.insertAction(block.event.event, block.x, block.y);
+        core.insertAction(block.event.event, block.x, block.y, null, false, floorId);
         // 不再执行该点的系统事件
         return _executeCallback();
     }
@@ -365,16 +368,20 @@ events.prototype.trigger = function (x, y, callback) {
         if (trigger == 'changeFloor' && !noPass && this._trigger_ignoreChangeFloor(block))
             return _executeCallback();
         core.status.automaticRoute.moveDirectly = false;
-        this.doSystemEvent(trigger, block);
+        this.doSystemEvent(trigger, eventBlock, _executeCallback);
+        return;
     }
     return _executeCallback();
 }
 
-events.prototype._trigger_inAction = function (x, y) {
+events.prototype._trigger_inAction = function (x, y, floorId) {
     if (core.status.gameOver || core.status.event.id != 'action') return;
+    floorId = floorId || core.status.event.data.floorId || core.status.floorId;
 
-    var block = core.getBlock(x, y);
+    var block = core.getBlock(x, y, floorId);
     if (block == null) return core.doAction();
+    var eventBlock = core.clone(block);
+    eventBlock.floorId = floorId;
 
     // 执行该点的脚本
     try {
@@ -384,18 +391,18 @@ events.prototype._trigger_inAction = function (x, y) {
     // 碰触事件
     if (block.event.event) {
         core.clearRouteFolding();
-        core.insertAction(block.event.event, block.x, block.y);
+        core.insertAction(block.event.event, block.x, block.y, null, false, floorId);
         // 不再执行该点的系统事件
         return core.doAction();
     }
 
     if (block.event.trigger && block.event.trigger != 'null') {
-        this.setEvents(null, x, y);
+        this.setEvents(null, x, y, null, floorId);
         if (block.event.trigger == 'action') {
             this.insertAction(block.event.data);
         }
         else {
-            this.doSystemEvent(block.event.trigger, block, core.doAction);
+            this.doSystemEvent(block.event.trigger, eventBlock, core.doAction);
             return;
         }
     }
@@ -424,6 +431,7 @@ events.prototype._trigger_ignoreChangeFloor = function (block) {
 }
 
 events.prototype._sys_battle = function (data, callback) {
+    var floorId = data.floorId || core.status.floorId;
     // 检查是否需要改变朝向
     /* if (data.x == core.nextX() && data.y == core.nextY()) {
         var dir = core.turnDirection(":back");
@@ -437,33 +445,34 @@ events.prototype._sys_battle = function (data, callback) {
 
     // 检查战前事件
     var beforeBattle = [];
-    core.push(beforeBattle, core.floors[core.status.floorId].beforeBattle[data.x + "," + data.y]);
+    core.push(beforeBattle, core.floors[floorId].beforeBattle[data.x + "," + data.y]);
     core.push(beforeBattle, (core.material.enemys[data.event.id] || {}).beforeBattle);
     if (beforeBattle.length > 0) {
-        core.push(beforeBattle, [{ "type": "battle", "x": data.x, "y": data.y }]);
+        core.push(beforeBattle, [{ "type": "battle", "x": data.x, "y": data.y, "floorId": floorId }]);
         core.clearContinueAutomaticRoute();
 
         // 自动存档
         var inAction = core.status.event.id == 'action';
         if (inAction) {
-            core.insertAction(beforeBattle, data.x, data.y);
+            core.insertAction(beforeBattle, data.x, data.y, null, false, floorId);
             core.doAction();
         } else {
             core.autosave(true);
-            core.insertAction(beforeBattle, data.x, data.y, callback);
+            core.insertAction(beforeBattle, data.x, data.y, callback, false, floorId);
         }
     } else {
-        this.battle(data.event.id, data.x, data.y, false, callback);
+        this.battle(data.event.id, data.x, data.y, false, callback, floorId);
     }
 }
 
 ////// 战斗 //////
-events.prototype.battle = function (id, x, y, force, callback) {
+events.prototype.battle = function (id, x, y, force, callback, floorId) {
+    floorId = floorId || core.status.floorId;
     core.saveAndStopAutomaticRoute();
-    id = id || core.getBlockId(x, y);
+    id = id || core.getBlockId(x, y, floorId);
     if (!id) return core.clearContinueAutomaticRoute(callback);
     // 非强制战斗
-    if (!core.enemys.canBattle(id, x, y) && !force && !core.status.event.id) {
+    if (!core.enemys.canBattle(id, x, y, floorId) && !force && !core.status.event.id) {
         core.stopSound();
         core.playSound('操作失败');
         core.drawTip("你打不过此怪物！", id);
@@ -472,33 +481,34 @@ events.prototype.battle = function (id, x, y, force, callback) {
     // 自动存档
     if (!core.status.event.id) core.autosave(true);
     // 战前事件
-    if (!this.beforeBattle(id, x, y))
+    if (!this.beforeBattle(id, x, y, floorId))
         return core.clearContinueAutomaticRoute(callback);
     // 战后事件
-    this.afterBattle(id, x, y);
+    this.afterBattle(id, x, y, floorId);
     if (callback) callback();
 }
 
 ////// 战斗前触发的事件 //////
-events.prototype.beforeBattle = function (enemyId, x, y) {
-    return this.eventdata.beforeBattle(enemyId, x, y)
+events.prototype.beforeBattle = function (enemyId, x, y, floorId) {
+    return this.eventdata.beforeBattle(enemyId, x, y, floorId)
 }
 
 ////// 战斗结束后触发的事件 //////
-events.prototype.afterBattle = function (enemyId, x, y) {
-    return this.eventdata.afterBattle(enemyId, x, y);
+events.prototype.afterBattle = function (enemyId, x, y, floorId) {
+    return this.eventdata.afterBattle(enemyId, x, y, floorId);
 }
 
 events.prototype._sys_openDoor = function (data, callback) {
     this.openDoor(data.x, data.y, true, function () {
         core.replay();
         if (callback) callback();
-    });
+    }, data.floorId);
 }
 
 ////// 开门 //////
-events.prototype.openDoor = function (x, y, needKey, callback) {
-    var block = core.getBlock(x, y);
+events.prototype.openDoor = function (x, y, needKey, callback, floorId) {
+    floorId = floorId || core.status.floorId;
+    var block = core.getBlock(x, y, floorId);
     core.saveAndStopAutomaticRoute();
     if (!this._openDoor_check(block, x, y, needKey)) {
         var locked = core.status.lockControl;
@@ -508,16 +518,16 @@ events.prototype.openDoor = function (x, y, needKey, callback) {
         });
         return;
     }
-    if (core.status.replay.speed == 24) {
+    if (floorId != core.status.floorId || core.status.replay.speed == 24) {
         core.status.replay.animate = true;
-        core.removeBlock(x, y);
+        core.removeBlock(x, y, floorId);
         setTimeout(function () {
             core.status.replay.animate = false;
-            core.events.afterOpenDoor(block.event.id, x, y);
+            core.events.afterOpenDoor(block.event.id, x, y, floorId);
             if (callback) callback();
         }, 1); // +1是为了录像检测系统
     } else {
-        this._openDoor_animate(block, x, y, callback);
+        this._openDoor_animate(block, x, y, callback, floorId);
     }
 }
 
@@ -569,7 +579,8 @@ events.prototype._openDoor_check = function (block, x, y, needKey) {
     return true;
 }
 
-events.prototype._openDoor_animate = function (block, x, y, callback) {
+events.prototype._openDoor_animate = function (block, x, y, callback, floorId) {
+    floorId = floorId || core.status.floorId;
     var blockInfo = core.getBlockInfo(block);
     blockInfo.opacity = block.opacity;
     blockInfo.filter = block.filter;
@@ -579,16 +590,16 @@ events.prototype._openDoor_animate = function (block, x, y, callback) {
     var locked = core.status.lockControl;
     core.lockControl();
     core.status.replay.animate = true;
-    core.removeBlock(x, y);
+    core.removeBlock(x, y, floorId);
 
     blockInfo.posX = 0;
     core.maps._drawBlockInfo(blockInfo, x, y);
 
     var cb = function () {
-        core.maps._removeBlockFromMap(core.status.floorId, block);
+        core.maps._removeBlockFromMap(floorId, block);
         if (!locked) core.unlockControl();
         core.status.replay.animate = false;
-        core.events.afterOpenDoor(block.event.id, x, y);
+        core.events.afterOpenDoor(block.event.id, x, y, floorId);
         if (callback) callback();
     }
 
@@ -608,19 +619,20 @@ events.prototype._openDoor_animate = function (block, x, y, callback) {
 }
 
 ////// 开一个门后触发的事件 //////
-events.prototype.afterOpenDoor = function (doorId, x, y) {
-    return this.eventdata.afterOpenDoor(doorId, x, y);
+events.prototype.afterOpenDoor = function (doorId, x, y, floorId) {
+    return this.eventdata.afterOpenDoor(doorId, x, y, floorId);
 }
 
 events.prototype._sys_getItem = function (data, callback) {
-    this.getItem(data.event.id, 1, data.x, data.y, false, callback);
+    this.getItem(data.event.id, 1, data.x, data.y, false, callback, data.floorId);
 }
 
 ////// 获得某个物品 //////
-events.prototype.getItem = function (id, num, x, y, isGentleClick, callback) {
+events.prototype.getItem = function (id, num, x, y, isGentleClick, callback, floorId) {
+    floorId = floorId || core.status.floorId;
     if (num == null) num = 1;
     var itemCls = core.material.items[id].cls;
-    core.removeBlock(x, y);
+    core.removeBlock(x, y, floorId);
     core.items.getItemEffect(id, num);
     var text = '获得 ' + core.material.items[id].name;
     if (num > 1) text += "x" + num;
@@ -645,12 +657,12 @@ events.prototype.getItem = function (id, num, x, y, isGentleClick, callback) {
         itemHint.push(id);
     }
 
-    this.afterGetItem(id, x, y, isGentleClick);
+    this.afterGetItem(id, x, y, isGentleClick, floorId);
     if (callback) callback();
 }
 
-events.prototype.afterGetItem = function (id, x, y, isGentleClick) {
-    this.eventdata.afterGetItem(id, x, y, isGentleClick);
+events.prototype.afterGetItem = function (id, x, y, isGentleClick, floorId) {
+    this.eventdata.afterGetItem(id, x, y, isGentleClick, floorId);
 }
 
 ////// 获得面前的物品（轻按） //////
@@ -911,8 +923,9 @@ events.prototype.onSki = function (number) {
 
 events.prototype._sys_action = function (data, callback) {
     var ev = core.clone(data.event.data), ex = data.x, ey = data.y;
+    var floorId = data.floorId || core.status.floorId;
     // 检查是否需要改变朝向
-    if (ex == core.nextX() && ey == core.nextY()) {
+    if (floorId == core.status.floorId && ex == core.nextX() && ey == core.nextY()) {
         var dir = core.turnDirection(":back");
         var id = data.event.id, toId = (data.event.faceIds || {})[dir];
         if (toId && id != toId) {
@@ -921,7 +934,7 @@ events.prototype._sys_action = function (data, callback) {
                 core.setBlock(number, ex, ey);
         }
     }
-    this.insertAction(ev, ex, ey, callback);
+    this.insertAction(ev, ex, ey, callback, false, floorId);
 }
 
 events.prototype._sys_custom = function (data, callback) {
@@ -960,7 +973,7 @@ events.prototype.doEvent = function (data, x, y, prefix) {
     core.doAction();
 }
 
-events.prototype.setEvents = function (list, x, y, callback) {
+events.prototype.setEvents = function (list, x, y, callback, floorId) {
     var data = core.status.event.data || {};
     if (list) {
         var l = core.clone(list);
@@ -976,6 +989,7 @@ events.prototype.setEvents = function (list, x, y, callback) {
     }
     if (x != null) data.x = x;
     if (y != null) data.y = y;
+    if (floorId != null) data.floorId = floorId;
     if (callback) data.callback = callback;
     if (!data.appendingEvents) data.appendingEvents = [];
     if (!data.locStack) data.locStack = [];
@@ -984,12 +998,12 @@ events.prototype.setEvents = function (list, x, y, callback) {
 }
 
 ////// 开始执行一系列自定义事件 //////
-events.prototype.startEvents = function (list, x, y, callback) {
+events.prototype.startEvents = function (list, x, y, callback, floorId) {
     if (!list) return;
     if (!(list instanceof Array)) {
         list = [list];
     }
-    this.setEvents(list, x, y, callback);
+    this.setEvents(list, x, y, callback, floorId);
     // 停止勇士
     core.waitHeroToStop(function () {
         core.lockControl();
@@ -1061,7 +1075,7 @@ events.prototype._popEvents = function (current, prefix) {
 }
 
 ////// 往当前事件列表之前或之后添加一个或多个事件 //////
-events.prototype.insertAction = function (action, x, y, callback, addToLast) {
+events.prototype.insertAction = function (action, x, y, callback, addToLast, floorId) {
     if (core.hasFlag("__statistics__")) return;
     if (core.status.gameOver) return;
     if (!action) return;
@@ -1070,9 +1084,25 @@ events.prototype.insertAction = function (action, x, y, callback, addToLast) {
     action = this.precompile(action);
 
     if (core.status.event.id != 'action') {
-        this.startEvents(action, x, y, callback);
+        this.startEvents(action, x, y, callback, floorId);
     }
     else {
+        var currentFloorId = core.status.event.data.floorId || core.status.floorId;
+        if (floorId != null && floorId != currentFloorId) {
+            var remoteX = x, remoteY = y, remoteFloorId = floorId;
+            var remoteActions = [{
+                "type": "function",
+                "function": "function(){core.pushEventLoc(" + remoteX + "," + remoteY + "," + JSON.stringify(remoteFloorId) + ");}"
+            }];
+            // 动作数组必须摊平后再插入；把 action 作为一个数组元素会被
+            // doAction 当成没有 type 的动作，最终卡在“未知事件”提示框。
+            core.push(remoteActions, action);
+            remoteActions.push({ "type": "function", "function": "function(){core.popEventLoc();}" });
+            action = this.precompile(remoteActions);
+            x = null;
+            y = null;
+            floorId = null;
+        }
         if (addToLast) {
             var list = core.status.event.data.list[0].todo;
             var index = 0;
@@ -1084,7 +1114,7 @@ events.prototype.insertAction = function (action, x, y, callback, addToLast) {
             }
         }
         else core.unshift(core.status.event.data.list[0].todo, action);
-        this.setEvents(null, x, y, callback);
+        this.setEvents(null, x, y, callback, floorId);
     }
 }
 
@@ -1233,7 +1263,8 @@ events.prototype.pushEventLoc = function (x, y, floorId) {
 
 events.prototype.popEventLoc = function () {
     if (core.status.event.id != 'action') return;
-    var loc = core.status.event.data.locStack.shift();
+    // 与 pushEventLoc 成对按后进先出恢复，嵌套跨面事件才不会跳回错误坐标。
+    var loc = core.status.event.data.locStack.pop();
     if (loc) {
         core.status.event.data.x = loc.x;
         core.status.event.data.y = loc.y;
@@ -1752,8 +1783,11 @@ events.prototype._action_openDoor = function (data, x, y, prefix) {
         this.__action_doAsyncFunc(data.async, core.openDoor, loc[0], loc[1], data.needKey);
     }
     else {
-        core.removeBlock(loc[0], loc[1], floorId);
-        core.doAction();
+        if (data.async) {
+            core.openDoor(loc[0], loc[1], data.needKey, null, floorId);
+            core.doAction();
+        }
+        else core.openDoor(loc[0], loc[1], data.needKey, core.doAction, floorId);
     }
 }
 
@@ -1797,21 +1831,17 @@ events.prototype._action_disableShop = function (data, x, y, prefix) {
 
 events.prototype._action_battle = function (data, x, y, prefix) {
     if (data.id) {
-        this.battle(data.id, null, null, true, core.doAction);
+        this.battle(data.id, null, null, true, core.doAction, data.floorId);
     }
     else {
-        if (data.floorId != core.status.floorId) {
-            core.doAction();
-            return;
-        }
         var loc = this.__action_getLoc(data.loc, x, y, prefix);
-        this.battle(null, loc[0], loc[1], true, core.doAction);
+        this.battle(null, loc[0], loc[1], true, core.doAction, data.floorId);
     }
 }
 
 events.prototype._action_trigger = function (data, x, y, prefix) {
     var loc = this.__action_getLoc(data.loc, x, y, prefix);
-    this._trigger_inAction(loc[0], loc[1]);
+    this._trigger_inAction(loc[0], loc[1], data.floorId);
 }
 
 events.prototype._action_insert = function (data, x, y, prefix) {

@@ -1,0 +1,53 @@
+main.floors.MT5 = {
+    "floorId": "MT5",
+    "title": "立方体·底面",
+    "name": "底面",
+    "canFlyTo": true,
+    "canFlyFrom": true,
+    "canUseQuickShop": true,
+    "cannotViewMap": false,
+    "defaultGround": "ground",
+    "images": [],
+    "ratio": 1,
+    "map": [
+        [  0, 31,  0, 27,  0,  0,  0,  0,  0, 28,  0, 31,  0],
+        [ 31,  0,201,  0,  0,  0,217,  0,  0,  0,202,  0, 31],
+        [  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0],
+        [ 28,  0,  0,  0,  0,  0,215,  0,  0,  0,  0,  0, 27],
+        [  0,  0,  0,  0,  1,  1, 85,  1,  1,  0,  0,  0,  0],
+        [  0,  0,  0,217,  1, 31,  0, 31,  1,215,  0,  0,  0],
+        [  0,  0,  0,  0, 85,  0, 49,  0, 85,  0,  0,  0,  0],
+        [  0,  0,  0,215,  1, 27, 34, 28,  1,217,  0,  0,  0],
+        [  0,  0,  0,  0,  1,  1, 85,  1,  1,  0,  0,  0,  0],
+        [ 27,  0,  0,  0,  0,  0,215,  0,  0,  0,  0,  0, 28],
+        [  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0],
+        [ 31,  0,209,  0,  0,  0,217,  0,  0,  0,205,  0, 31],
+        [  0, 31,  0, 28,  0,  0,  0,  0,  0, 27,  0, 31,  0]
+    ],
+    "firstArrive": [
+        {"type":"text","text":"\t[底面机关,sign]击败底面全部初级法师和石头人，将会开启中央宝库的四扇机关门。这个机关会跨面战斗后实时复核，不会留下死门。"}
+    ],
+    "parallelDo": "",
+    "events": {},
+    "changeFloor": {},
+    "afterBattle": {
+        "6,1": [{"type":"function","function":"function(){core.plugin.cubeWorld.openDoorsWhenClear('MT5',['bluePriest','rock'],[[6,4],[4,6],[8,6],[6,8]]);}"}],
+        "6,3": [{"type":"function","function":"function(){core.plugin.cubeWorld.openDoorsWhenClear('MT5',['bluePriest','rock'],[[6,4],[4,6],[8,6],[6,8]]);}"}],
+        "3,5": [{"type":"function","function":"function(){core.plugin.cubeWorld.openDoorsWhenClear('MT5',['bluePriest','rock'],[[6,4],[4,6],[8,6],[6,8]]);}"}],
+        "9,5": [{"type":"function","function":"function(){core.plugin.cubeWorld.openDoorsWhenClear('MT5',['bluePriest','rock'],[[6,4],[4,6],[8,6],[6,8]]);}"}],
+        "3,7": [{"type":"function","function":"function(){core.plugin.cubeWorld.openDoorsWhenClear('MT5',['bluePriest','rock'],[[6,4],[4,6],[8,6],[6,8]]);}"}],
+        "9,7": [{"type":"function","function":"function(){core.plugin.cubeWorld.openDoorsWhenClear('MT5',['bluePriest','rock'],[[6,4],[4,6],[8,6],[6,8]]);}"}],
+        "6,9": [{"type":"function","function":"function(){core.plugin.cubeWorld.openDoorsWhenClear('MT5',['bluePriest','rock'],[[6,4],[4,6],[8,6],[6,8]]);}"}],
+        "6,11": [{"type":"function","function":"function(){core.plugin.cubeWorld.openDoorsWhenClear('MT5',['bluePriest','rock'],[[6,4],[4,6],[8,6],[6,8]]);}"}]
+    },
+    "afterGetItem": {},
+    "afterOpenDoor": {},
+    "cannotMove": {},
+    "bgmap": [],
+    "fgmap": [],
+    "width": 13,
+    "height": 13,
+    "autoEvent": {},
+    "beforeBattle": {},
+    "cannotMoveIn": {}
+};

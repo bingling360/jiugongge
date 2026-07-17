@@ -266,6 +266,13 @@ var comment_c456ea59_6018_45ef_8bcc_211a24c627dc = {
 					"_docs": "吸血比例",
 					"_data": "吸血怪的吸血百分比"
 				},
+				"absorbValue": {
+					"_leaf": true,
+					"_type": "textarea",
+					"_range": "thiseval==null||(thiseval>=0&&thiseval<=1)",
+					"_docs": "吸噬比例",
+					"_data": "怪物攻击实际穿透护盾的伤害中，转化为自身生命的比例（0~1）"
+				},
 				"hpBuff": {
 					"_leaf": true,
 					"_type": "textarea",

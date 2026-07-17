@@ -3735,7 +3735,9 @@ ui.prototype.deleteCanvas = function (name) {
     }
 
     if (!core.dymCanvas[name]) return null;
-    core.dom.gameDraw.removeChild(core.dymCanvas[name].canvas);
+    // 动态画布可能被功能插件放入 gameDraw 的子图层容器；从实际父节点
+    // 删除，避免合法的图层分组导致 removeChild 抛出 NotFoundError。
+    core.dymCanvas[name].canvas.parentNode.removeChild(core.dymCanvas[name].canvas);
     delete core.dymCanvas[name];
 }
 

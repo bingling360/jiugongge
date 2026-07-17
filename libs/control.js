@@ -2880,6 +2880,52 @@ control.prototype.clearRouteFolding = function () {
 }
 
 ////// 检查录像折叠 //////
+control.prototype._getRouteFoldingSignature = function () {
+    if (typeof CubeWorld == 'undefined' || !CubeWorld.stableStringify) return null;
+    var hero = core.status.hero || {};
+    var maps = {};
+    Object.keys(core.status.maps || {}).sort().forEach(function (floorId) {
+        var floor = core.status.maps[floorId] || {};
+        core.extractBlocks(floorId);
+        var blocks = (floor.blocks || []).map(function (block) {
+            return {
+                x: block.x,
+                y: block.y,
+                disable: !!block.disable,
+                opacity: block.opacity,
+                filter: block.filter,
+                event: block.event || null
+            };
+        }).sort(function (a, b) {
+            return a.y - b.y || a.x - b.x;
+        });
+        maps[floorId] = {
+            deleted: !!floor.deleted,
+            canFlyTo: floor.canFlyTo,
+            canFlyFrom: floor.canFlyFrom,
+            cannotViewMap: floor.cannotViewMap,
+            ratio: floor.ratio,
+            color: floor.color,
+            weather: floor.weather,
+            bgmap: floor.bgmap,
+            fgmap: floor.fgmap,
+            map: floor.map,
+            blocks: blocks
+        };
+    });
+    return CubeWorld.stableStringify({
+        floorId: core.status.floorId,
+        flags: hero.flags || {},
+        items: hero.items || {},
+        equipment: hero.equipment || [],
+        followers: hero.followers || [],
+        shops: core.status.shops || {},
+        globalFlags: core.flags || {},
+        globalValues: core.values || {},
+        maps: maps
+    });
+}
+
 control.prototype.checkRouteFolding = function () {
     // 未开启、未开始游戏、录像播放中、正在事件中：不执行
     if (!core.flags.enableRouteFolding || !core.isPlaying() || core.isReplaying() || core.status.event.id) {
@@ -2888,11 +2934,14 @@ control.prototype.checkRouteFolding = function () {
     var hero = core.clone(core.status.hero, function (name, value) {
         return name != 'steps' && typeof value == 'number';
     });
-    var index = [core.getHeroLoc('x'), core.getHeroLoc('y'), core.getHeroLoc('direction').charAt(0)].join(',');
+    var signature = this._getRouteFoldingSignature();
+    // 循环引用、函数等无法安全序列化时直接放弃折叠，绝不使用共享错误哨兵。
+    if (signature == null) return this.clearRouteFolding();
+    var index = [core.status.floorId, core.getHeroLoc('x'), core.getHeroLoc('y'), core.getHeroLoc('direction').charAt(0)].join(',');
     core.status.routeFolding = core.status.routeFolding || {};
     if (core.status.routeFolding[index]) {
         var one = core.status.routeFolding[index];
-        if (core.same(one.hero, hero) && one.length < core.status.route.length) {
+        if (one.signature === signature && core.same(one.hero, hero) && one.length < core.status.route.length) {
             Object.keys(core.status.routeFolding).forEach(function (v) {
                 if (core.status.routeFolding[v].length >= one.length) delete core.status.routeFolding[v];
             });
@@ -2900,7 +2949,7 @@ control.prototype.checkRouteFolding = function () {
             this._bindRoutePush();
         }
     }
-    core.status.routeFolding[index] = { hero: hero, length: core.status.route.length };
+    core.status.routeFolding[index] = { hero: hero, signature: signature, length: core.status.route.length };
 }
 
 // ------ 天气，色调，BGM ------ //

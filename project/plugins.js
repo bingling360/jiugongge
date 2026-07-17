@@ -8202,6 +8202,10 @@ var plugins_bb40132b_638b_4a9f_b028_d3fe47acc8d1 =
 			core.ui._drawSwitchs_sounds();
 		};
 	},
+	"cubeWorld": function () {
+		if (typeof CubeWorldRuntime == "undefined") throw new Error("CubeWorldRuntime 未加载");
+		CubeWorldRuntime.install(this);
+	},
 	"platFly": function () {
 		// 本插件可以给平面塔启用一个带小地图的楼传，默认关闭
 		// 是否开启本插件，默认禁用；将此改成 true 将启用本插件。

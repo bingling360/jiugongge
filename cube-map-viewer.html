@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+    <title>立方体六面总览</title>
+    <style>
+        :root { color-scheme: dark; --face-size: min(54vmin, 430px); --half: calc(var(--face-size) / 2); }
+        * { box-sizing: border-box; }
+        html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: radial-gradient(circle at 50% 40%, #24324c 0, #111827 46%, #05070c 100%); color: #f8fafc; font-family: system-ui, sans-serif; }
+        #toolbar { position: fixed; inset: 12px 12px auto 12px; z-index: 20; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-right: 48px; }
+        #toolbar button, #close { border: 1px solid rgba(255,255,255,.35); border-radius: 8px; color: inherit; background: rgba(15,23,42,.8); padding: 7px 11px; cursor: pointer; backdrop-filter: blur(6px); }
+        #toolbar button:hover, #toolbar button.active { background: #2563eb; border-color: #93c5fd; }
+        #close { position: fixed; z-index: 30; top: 12px; right: 12px; width: 38px; height: 38px; padding: 0; font-size: 24px; line-height: 34px; }
+        #scene { position: absolute; inset: 72px 0 42px; display: grid; place-items: center; perspective: 1100px; touch-action: none; cursor: grab; }
+        #scene.dragging { cursor: grabbing; }
+        #cube { position: relative; width: var(--face-size); height: var(--face-size); transform-style: preserve-3d; transform: rotateX(-18deg) rotateY(35deg) scale(.72); transition: transform 180ms ease-out; }
+        #scene.dragging #cube { transition: none; }
+        .face { position: absolute; inset: 0; border: 2px solid rgba(191,219,254,.75); background: #111827; box-shadow: inset 0 0 28px rgba(0,0,0,.6); backface-visibility: visible; }
+        .face canvas { display: block; width: 100%; height: 100%; image-rendering: auto; }
+        .face .caption { position: absolute; left: 5px; top: 5px; padding: 3px 7px; border-radius: 5px; background: rgba(0,0,0,.72); font-size: 12px; pointer-events: none; }
+        .face.current { border-color: #facc15; box-shadow: 0 0 22px rgba(250,204,21,.85), inset 0 0 25px rgba(0,0,0,.45); }
+        .front  { transform: translateZ(var(--half)); }
+        .back   { transform: rotateY(180deg) translateZ(var(--half)); }
+        .left   { transform: rotateY(-90deg) translateZ(var(--half)); }
+        .right  { transform: rotateY(90deg) translateZ(var(--half)); }
+        .top    { transform: rotateX(90deg) translateZ(var(--half)); }
+        .bottom { transform: rotateX(-90deg) translateZ(var(--half)); }
+        #hint { position: fixed; left: 12px; right: 12px; bottom: 10px; text-align: center; color: #cbd5e1; font-size: 13px; pointer-events: none; }
+        #error { display: none; position: fixed; inset: 40% 12%; z-index: 40; text-align: center; color: #fecaca; }
+        @media (max-width: 650px) {
+            :root { --face-size: min(62vmin, 360px); }
+            #toolbar { inset: 8px 48px auto 8px; gap: 5px; }
+            #toolbar button { padding: 5px 7px; font-size: 12px; }
+            #scene { top: 88px; }
+            #hint { font-size: 11px; }
+        }
+    </style>
+</head>
+<body>
+    <div id="toolbar" aria-label="选择观察面">
+        <button data-face="MT0">正面</button><button data-face="MT1">背面</button>
+        <button data-face="MT2">左面</button><button data-face="MT3">右面</button>
+        <button data-face="MT4">顶面</button><button data-face="MT5">底面</button>
+        <button id="reset">自由视角</button>
+    </div>
+    <button id="close" title="关闭（Esc / C）" aria-label="关闭">×</button>
+    <div id="scene">
+        <div id="cube">
+            <div class="face front" data-floor="MT0"><canvas width="416" height="416"></canvas><span class="caption">MT0 正面</span></div>
+            <div class="face back" data-floor="MT1"><canvas width="416" height="416"></canvas><span class="caption">MT1 背面</span></div>
+            <div class="face left" data-floor="MT2"><canvas width="416" height="416"></canvas><span class="caption">MT2 左面</span></div>
+            <div class="face right" data-floor="MT3"><canvas width="416" height="416"></canvas><span class="caption">MT3 右面</span></div>
+            <div class="face top" data-floor="MT4"><canvas width="416" height="416"></canvas><span class="caption">MT4 顶面</span></div>
+            <div class="face bottom" data-floor="MT5"><canvas width="416" height="416"></canvas><span class="caption">MT5 底面</span></div>
+        </div>
+    </div>
+    <div id="hint">拖动旋转 · 滚轮或双指缩放 · 黄色边框为勇士所在面 · Esc / C 关闭</div>
+    <div id="error">无法读取游戏地图。关闭总览后仍可继续游戏。</div>
+    <script>
+        (function () {
+            "use strict";
+            var scene = document.getElementById("scene");
+            var cube = document.getElementById("cube");
+            var error = document.getElementById("error");
+            var rotation = { x: -18, y: 35 }, scale = 0.72;
+            var dragging = false, pointer = null, lastX = 0, lastY = 0, pinchDistance = null;
+            var views = {
+                MT0: { x: 0, y: 0 }, MT1: { x: 0, y: 180 }, MT2: { x: 0, y: 90 },
+                MT3: { x: 0, y: -90 }, MT4: { x: -90, y: 0 }, MT5: { x: 90, y: 0 }
+            };
+
+            function renderTransform() {
+                cube.style.transform = "rotateX(" + rotation.x + "deg) rotateY(" + rotation.y + "deg) scale(" + scale + ")";
+            }
+
+            function gameCore() {
+                return parent && parent.core && parent.core.plugin && parent.core.plugin.cubeWorld ? parent.core : null;
+            }
+
+            function drawDamage(ctx, floorId, runtime) {
+                var check = runtime.buildCheckBlock(floorId);
+                if (!check) return;
+                var cell = ctx.canvas.width / 13;
+                ctx.save();
+                ctx.textAlign = "center";
+                ctx.textBaseline = "middle";
+                ctx.font = "bold 11px sans-serif";
+                Object.keys(check.damage || {}).forEach(function (key) {
+                    var value = check.damage[key];
+                    if (!(value > 0)) return;
+                    var xy = key.split(",").map(Number), x = xy[0], y = xy[1];
+                    ctx.fillStyle = "rgba(190, 24, 93, .42)";
+                    ctx.fillRect(x * cell, y * cell, cell, cell);
+                    ctx.fillStyle = "#fff7ed";
+                    ctx.strokeStyle = "rgba(0,0,0,.85)";
+                    ctx.lineWidth = 3;
+                    var label = value >= 10000 ? Math.round(value / 1000) + "k" : String(value);
+                    ctx.strokeText(label, (x + .5) * cell, (y + .5) * cell);
+                    ctx.fillText(label, (x + .5) * cell, (y + .5) * cell);
+                });
+                ctx.restore();
+            }
+
+            function refresh() {
+                try {
+                    var c = gameCore();
+                    if (!c || !c.status || !c.status.maps) throw new Error("游戏尚未初始化");
+                    document.querySelectorAll(".face").forEach(function (face) {
+                        var floorId = face.dataset.floor;
+                        var canvas = face.querySelector("canvas"), ctx = canvas.getContext("2d");
+                        ctx.clearRect(0, 0, canvas.width, canvas.height);
+                        var options = { ctx: ctx, x: 0, y: 0, size: canvas.width, damage: false, all: true, noHD: true };
+                        if (c.status.floorId === floorId) {
+                            options.heroLoc = c.clone(c.status.hero.loc);
+                            options.heroIcon = c.status.hero.image;
+                            face.classList.add("current");
+                        } else face.classList.remove("current");
+                        c.drawThumbnail(floorId, null, options);
+                        drawDamage(ctx, floorId, c.plugin.cubeWorld);
+                    });
+                    error.style.display = "none";
+                } catch (e) {
+                    error.textContent = "六面地图暂时无法绘制：" + (e && e.message ? e.message : e) + "。关闭总览后仍可继续游戏。";
+                    error.style.display = "block";
+                }
+            }
+
+            document.querySelectorAll("[data-face]").forEach(function (button) {
+                button.addEventListener("click", function () {
+                    var view = views[button.dataset.face];
+                    rotation.x = view.x; rotation.y = view.y; scale = 0.82;
+                    document.querySelectorAll("[data-face]").forEach(function (one) { one.classList.toggle("active", one === button); });
+                    renderTransform();
+                });
+            });
+            document.getElementById("reset").addEventListener("click", function () {
+                rotation.x = -18; rotation.y = 35; scale = .72;
+                document.querySelectorAll("[data-face]").forEach(function (one) { one.classList.remove("active"); });
+                renderTransform();
+            });
+            document.getElementById("close").addEventListener("click", function () {
+                var c = gameCore(); if (c) c.plugin.cubeWorld.closeViewer();
+            });
+            document.addEventListener("keydown", function (event) {
+                if (event.key === "Escape" || event.key.toLowerCase() === "c") {
+                    event.preventDefault();
+                    var c = gameCore(); if (c) c.plugin.cubeWorld.closeViewer();
+                }
+            });
+            scene.addEventListener("pointerdown", function (event) {
+                dragging = true; pointer = event.pointerId; lastX = event.clientX; lastY = event.clientY;
+                scene.classList.add("dragging"); scene.setPointerCapture(event.pointerId);
+            });
+            scene.addEventListener("pointermove", function (event) {
+                if (!dragging || event.pointerId !== pointer) return;
+                rotation.y += (event.clientX - lastX) * .45;
+                rotation.x = Math.max(-90, Math.min(90, rotation.x - (event.clientY - lastY) * .45));
+                lastX = event.clientX; lastY = event.clientY; renderTransform();
+            });
+            function stopDrag(event) {
+                if (event.pointerId !== pointer) return;
+                dragging = false; pointer = null; scene.classList.remove("dragging");
+            }
+            scene.addEventListener("pointerup", stopDrag);
+            scene.addEventListener("pointercancel", stopDrag);
+            scene.addEventListener("wheel", function (event) {
+                event.preventDefault(); scale = Math.max(.38, Math.min(1.12, scale - event.deltaY * .0008)); renderTransform();
+            }, { passive: false });
+            scene.addEventListener("touchmove", function (event) {
+                if (event.touches.length !== 2) { pinchDistance = null; return; }
+                var dx = event.touches[0].clientX - event.touches[1].clientX;
+                var dy = event.touches[0].clientY - event.touches[1].clientY;
+                var distance = Math.sqrt(dx * dx + dy * dy);
+                if (pinchDistance != null) scale = Math.max(.38, Math.min(1.12, scale * distance / pinchDistance));
+                pinchDistance = distance; renderTransform(); event.preventDefault();
+            }, { passive: false });
+            scene.addEventListener("touchend", function () { pinchDistance = null; });
+
+            window.CubeViewer = { refresh: refresh };
+            renderTransform();
+            window.addEventListener("load", refresh);
+        })();
+    </script>
+</body>
+</html>

@@ -1029,8 +1029,9 @@ interface events {
      * @param y 敌人的纵坐标，可选
      * @param force true表示强制战斗，可选
      * @param callback 回调函数，可选
+     * @param floorId 敌人所在楼层；跨面战斗时显式填写
      */
-    battle(id: string, x?: number, y?: number, force?: boolean, callback?: () => void): void
+    battle(id: string, x?: number, y?: number, force?: boolean, callback?: () => void, floorId?: string): void
 
     /**
      * 开门（包括三种基础墙）
@@ -1039,8 +1040,9 @@ interface events {
      * @param y 门的纵坐标
      * @param needKey true表示需要钥匙，会导致机关门打不开
      * @param callback 门完全打开后或打不开时的回调函数，可选
+     * @param floorId 门所在楼层；跨面开门时显式填写
      */
-    openDoor(x: number, y: number, needKey?: boolean, callback?: () => void): void
+    openDoor(x: number, y: number, needKey?: boolean, callback?: () => void, floorId?: string): void
 
     /**
      * 获得道具并提示，如果填写了坐标就会删除该点的该道具
@@ -1049,9 +1051,11 @@ interface events {
      * @param num 获得的数量，不填视为1，填了就别填坐标了
      * @param x 道具的横坐标，可选
      * @param y 道具的纵坐标，可选
+     * @param isGentleClick 是否由轻按拾取触发
      * @param callback 回调函数，可选
+     * @param floorId 道具所在楼层；跨面拾取时显式填写
      */
-    getItem(id: string, num?: number, x?: number, y?: number, callback?: () => void): void
+    getItem(id: string, num?: number, x?: number, y?: number, isGentleClick?: boolean, callback?: () => void, floorId?: string): void
 
     /**
      * 场景切换
@@ -1079,8 +1083,9 @@ interface events {
      * @param y 新的当前点纵坐标，可选
      * @param callback 新的回调函数，可选
      * @param addToLast 插入的位置，true表示插入到末尾，否则插入到开头
+     * @param floorId 事件坐标所属楼层；跨面事件时显式填写
      */
-    insertAction(action: Events | MotaAction, x?: number | null, y?: number | null, callback?: () => void, addToLast?: boolean | null): void
+    insertAction(action: Events | MotaAction, x?: number | null, y?: number | null, callback?: () => void, addToLast?: boolean | null, floorId?: string): void
 
     /**
      * 设置一项敌人属性并计入存档
@@ -1272,19 +1277,19 @@ interface events {
     /** 
      * 触发(x,y)点的系统事件；会执行该点图块的script属性，同时支持战斗（会触发战后）、道具（会触发道具后）、楼层切换等等
      */
-    trigger(x?: number, y?: number, callback?: () => any): void
+    trigger(x?: number, y?: number, callback?: () => any, floorId?: string): void
 
     /** 战斗前触发的事件 */
-    beforeBattle(enemyId?: string, x?: number, y?: number): void
+    beforeBattle(enemyId?: string, x?: number, y?: number, floorId?: string): void
 
     /** 战斗结束后触发的事件 */
-    afterBattle(enemyId?: string, x?: number, y?: number): void
+    afterBattle(enemyId?: string, x?: number, y?: number, floorId?: string): void
 
     /** 开一个门后触发的事件 */
-    afterOpenDoor(doorId?: string, x?: number, y?: number): void
+    afterOpenDoor(doorId?: string, x?: number, y?: number, floorId?: string): void
 
     /** 获得一个道具后的shij  */
-    afterGetItem(id?: string, x?: number, y?: number, isGentleClick?: boolean): void
+    afterGetItem(id?: string, x?: number, y?: number, isGentleClick?: boolean, floorId?: string): void
 
     /** 
      * 轻按获得面前的物品或周围唯一物品
@@ -1328,10 +1333,10 @@ interface events {
     doEvent(data?: any, x?: number, y?: number, prefix?: any): void
 
     /** 直接设置事件列表 */
-    setEvents(list?: any, x?: number, y?: number, callback?: () => any): void
+    setEvents(list?: any, x?: number, y?: number, callback?: () => any, floorId?: string): void
 
     /** 开始执行一系列自定义事件 */
-    startEvents(list?: any, x?: number, y?: number, callback?: () => any): void
+    startEvents(list?: any, x?: number, y?: number, callback?: () => any, floorId?: string): void
 
     /**
      * 插入一个公共事件
@@ -3081,6 +3086,23 @@ interface icons {
 interface plugin {
     // aniMap: Map<any, Function>
 
+    /** 六面立方体运行时及当前二维视图朝向。 */
+    cubeWorld: {
+        faces: string[]
+        isFace(floorId: string): boolean
+        getViewQuarter(): 0 | 1 | 2 | 3
+        syncViewRotation(animate?: boolean): number
+        resetViewFromState(): number
+        afterChangeFloorView(floorId: string): number
+        logicalToScreenDirection(direction: 'up' | 'right' | 'down' | 'left'): 'up' | 'right' | 'down' | 'left'
+        screenToLogicalDirection(direction: 'up' | 'right' | 'down' | 'left'): 'up' | 'right' | 'down' | 'left'
+        screenLocationToLogical(loc: { x: number, y: number, size: number }): { x: number, y: number, size: number }
+        isViewTransitioning(): boolean
+        openViewer(): boolean
+        closeViewer(): boolean
+        toggleViewer(): boolean
+    }
+
     /** 高级动画相关的类 */
     animate: {
         Animation?: any, AnimationBase?: any, Ticker?: any, Transition?: any, bezier?: any, bezierPath?: any, circle?: any,
@@ -3590,4 +3612,3 @@ declare let ui: () => ui
 declare let utils: () => utils
 declare let icons: () => icons
 declare let actions: () => actions
-

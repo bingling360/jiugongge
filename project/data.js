@@ -2,7 +2,12 @@ var data_a1e2fb4a_e986_4524_b0da_9b7ba7c0874d =
 {
 	"main": {
 		"floorIds": [
-			"MT0"
+			"MT0",
+			"MT1",
+			"MT2",
+			"MT3",
+			"MT4",
+			"MT5"
 		],
 		"floorPartitions": [],
 		"images": [
@@ -119,21 +124,21 @@ var data_a1e2fb4a_e986_4524_b0da_9b7ba7c0874d =
 		]
 	},
 	"firstData": {
-		"title": "魔塔样板",
-		"name": "template",
-		"version": "Ver 2.8.2",
+		"title": "立方体世界",
+		"name": "cube-world",
+		"version": "Ver 3.0.0",
 		"floorId": "MT0",
 		"hero": {
 			"image": "hero.png",
 			"animate": false,
 			"name": "阳光",
 			"lv": 1,
-			"hpmax": 9999,
-			"hp": 1000,
+			"hpmax": 999999,
+			"hp": 12000,
 			"manamax": -1,
 			"mana": 0,
-			"atk": 100,
-			"def": 100,
+			"atk": 20,
+			"def": 20,
 			"mdef": 0,
 			"money": 0,
 			"exp": 0,
@@ -144,7 +149,10 @@ var data_a1e2fb4a_e986_4524_b0da_9b7ba7c0874d =
 					"setting": 1,
 					"postman": 1
 				},
-				"tools": {},
+				"tools": {
+					"yellowKey": 2,
+					"blueKey": 1
+				},
 				"equips": {}
 			},
 			"loc": {
@@ -510,35 +518,30 @@ var data_a1e2fb4a_e986_4524_b0da_9b7ba7c0874d =
 		],
 		"startText": [
 			{
-				"type": "comment",
-				"text": "初始剧情"
-			},
-			{
-				"type": "comment",
-				"text": "血瓶宝石数据默认显示"
-			},
-			{
 				"type": "setValue",
 				"name": "flag:itemDetail",
 				"value": "true"
 			},
 			{
-				"type": "comment",
-				"text": "如果不需要显示弹幕，可去除comment相关事件块"
+				"type": "text",
+				"text": "\t[向导,sign]欢迎来到立方体世界。这里的六张地图不是六层塔，而是同一个立方体的六个表面。"
 			},
 			{
-				"type": "setValue",
-				"name": "flag:comment",
-				"value": "true"
+				"type": "text",
+				"text": "走到任意边缘后继续前进，就会跨到相邻表面；跨越发生旋转时，勇士、激光和追猎的方向也会随表面一起转动。"
 			},
 			{
-				"type": "function",
-				"function": "function(){\n// 默认读取弹幕数据\nif (core.hasFlag('comment') && !core.isReplaying()) {\n\tnew Promise(res => {\n\t\t\tsetTimeout(res, 1000);\n\t\t})\n\t\t.then(value => {\n\t\t\treturn new Promise(res => {\n\t\t\t\tcore.plugin.getComment();\n\t\t\t\tsetTimeout(res, 1000);\n\t\t\t})\n\t\t})\n\t\t.then(value => {\n\t\t\tcore.plugin.drawCommentSign();\n\t\t})\n}\n}"
+				"type": "text",
+				"text": "按 C 打开六面总览，拖动旋转、滚轮缩放；再次按 C 或 Esc 关闭。"
+			},
+			{
+				"type": "tip",
+				"text": "从正面出发，探索完整的六面世界。"
 			}
 		],
 		"shops": [
 			{
-				"id": "shop1",
+				"id": "moneyShop",
 				"text": "\t[贪婪之神,moneyShop]勇敢的武士啊, 给我${20+2*flag:shop1}金币就可以：",
 				"textInList": "1F金币商店",
 				"mustEnable": false,
@@ -603,7 +606,7 @@ var data_a1e2fb4a_e986_4524_b0da_9b7ba7c0874d =
 				]
 			},
 			{
-				"id": "shop2",
+				"id": "expShop",
 				"text": "\t[贪婪之神,expShop]勇敢的武士啊, 给我一定经验就可以：",
 				"textInList": "1F经验商店",
 				"mustEnable": false,
@@ -701,13 +704,13 @@ var data_a1e2fb4a_e986_4524_b0da_9b7ba7c0874d =
 		"lavaDamage": 100,
 		"poisonDamage": 10,
 		"weakValue": 20,
-		"redGem": 3,
-		"blueGem": 3,
-		"greenGem": 5,
-		"redPotion": 100,
-		"bluePotion": 250,
-		"yellowPotion": 500,
-		"greenPotion": 800,
+		"redGem": 4,
+		"blueGem": 4,
+		"greenGem": 30,
+		"redPotion": 500,
+		"bluePotion": 1200,
+		"yellowPotion": 2500,
+		"greenPotion": 5000,
 		"breakArmor": 0.9,
 		"counterAttack": 0.1,
 		"purify": 3,

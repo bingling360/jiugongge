@@ -6,3 +6,10 @@
 Thumbs.db
 desktop.ini
 *.swp
+
+# Node / 自动化测试产物（锁文件需要提交，保证依赖可复现）
+node_modules/
+playwright-report/
+test-results/
+coverage/
+_saves/

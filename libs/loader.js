@@ -11,7 +11,34 @@ function loader() {
 }
 
 loader.prototype._init = function () {
+    this.failedImages = [];
+}
 
+loader.prototype._createImageFallback = function (dir, imgName) {
+    // 核心素材按原始图集尺寸创建透明画布，保证后续裁剪和源矩形绘制
+    // 不会因为一张图片加载失败而再次抛错。其他图片使用单格占位。
+    var materialSizes = {
+        animates: [128, 928], enemys: [64, 2336], items: [32, 2048],
+        npcs: [64, 448], terrains: [32, 1120], enemy48: [128, 384],
+        npc48: [128, 480], icons: [32, 1312]
+    };
+    var size = dir === "materials" && materialSizes[imgName]
+        ? materialSizes[imgName] : dir === "autotiles" ? [96, 128] : [32, 32];
+    var canvas = document.createElement("canvas");
+    canvas.width = size[0];
+    canvas.height = size[1];
+    canvas.src = canvas.toDataURL("image/png");
+    canvas.setAttribute("_width", canvas.width);
+    canvas.setAttribute("_height", canvas.height);
+    canvas._loadFailed = true;
+    return canvas;
+}
+
+loader.prototype._recordImageFailure = function (dir, imgName, error) {
+    var key = dir + "/" + imgName;
+    if (this.failedImages.indexOf(key) < 0) this.failedImages.push(key);
+    console.error("图片加载失败，已使用透明占位图：" + key, error || "");
+    this._setStartLoadTipText("图片 " + key + " 加载失败，已使用占位图继续启动...");
 }
 
 ////// 设置加载进度条进度 //////
@@ -245,6 +272,12 @@ loader.prototype.loadImages = function (dir, names, toSave, callback) {
 }
 
 loader.prototype.loadImage = function (dir, imgName, callback) {
+    var completed = false;
+    var finish = function (image) {
+        if (completed) return;
+        completed = true;
+        callback(imgName, image);
+    };
     try {
         var name = imgName;
         if (name.indexOf(".") < 0)
@@ -253,17 +286,19 @@ loader.prototype.loadImage = function (dir, imgName, callback) {
         image.onload = function () {
             image.setAttribute('_width', image.width);
             image.setAttribute('_height', image.height);
-            callback(imgName, image);
+            finish(image);
         }
-        image.onerror = function () {
-            callback(imgName, null);
+        image.onerror = function (error) {
+            core.loader._recordImageFailure(dir, imgName, error);
+            finish(core.loader._createImageFallback(dir, imgName));
         }
         image.src = 'project/' + dir + '/' + name + "?v=" + main.version;
-        if (name.endsWith('.gif'))
-            callback(imgName, null);
+        if (name.endsWith('.gif')) finish(null);
     }
     catch (e) {
         console.error(e);
+        core.loader._recordImageFailure(dir, imgName, e);
+        finish(core.loader._createImageFallback(dir, imgName));
     }
 }
 
@@ -316,7 +351,7 @@ loader.prototype._loadAnimates_sync = function () {
                         console.error('无法找到动画文件' + core.animates[i] + '！');
                     }
                 }
-            }, "text/plain; charset=x-user-defined");
+            }, null, "text/plain; charset=x-user-defined");
         }
         return;
     }
