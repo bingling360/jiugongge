@@ -77,11 +77,24 @@ test("3D 总览保持等边正方体，并能连续越过顶面和底面旋转",
             const canvas = face.querySelector("canvas");
             const faceMatrix = new DOMMatrix(style.transform);
             const center = new DOMPoint(0, 0, 0).matrixTransform(faceMatrix);
+            const combined = matrix.multiply(faceMatrix);
+            const half = parseFloat(style.width) / 2;
+            const points = [[-half, -half], [half, -half], [half, half], [-half, half]].map(([x, y]) => {
+                const point = new DOMPoint(x, y, 0).matrixTransform(combined);
+                return { x: point.x, y: point.y };
+            });
+            const vector = (from, to) => ({ x: to.x - from.x, y: to.y - from.y });
+            const parallelError = (left, right) => Math.abs(left.x * right.y - left.y * right.x) /
+                (Math.hypot(left.x, left.y) * Math.hypot(right.x, right.y));
             return {
                 width: parseFloat(style.width), height: parseFloat(style.height),
                 canvasWidth: canvas.width, canvasHeight: canvas.height,
                 backfaceVisibility: style.backfaceVisibility,
-                centerRadius: Math.hypot(center.x, center.y, center.z)
+                centerRadius: Math.hypot(center.x, center.y, center.z),
+                oppositeEdgeErrors: [
+                    parallelError(vector(points[0], points[1]), vector(points[3], points[2])),
+                    parallelError(vector(points[0], points[3]), vector(points[1], points[2]))
+                ]
             };
         });
         return {
@@ -99,6 +112,7 @@ test("3D 总览保持等边正方体，并能连续越过顶面和底面旋转",
         expect(face.backfaceVisibility).toBe("hidden");
         // CSS 像素布局会将 vmin 结果量化到约 1/64px；这里只容许该级别的舍入误差。
         expect(Math.abs(face.centerRadius - face.width / 2)).toBeLessThan(0.01);
+        expect(Math.max(...face.oppositeEdgeErrors)).toBeLessThan(1e-12);
     }
     const spatialLengths = geometry.axes.map((axis) => axis.spatial);
     const projectedLengths = geometry.axes.map((axis) => axis.projected);
@@ -156,6 +170,18 @@ test("3D 总览保持等边正方体，并能连续越过顶面和底面旋转",
     expect(Math.max(...dynamicAxisLengths) - Math.min(...dynamicAxisLengths)).toBeLessThan(1e-6);
     await expect(frame.locator("#scene")).not.toHaveClass(/dragging/);
     expect(await frame.locator("body").evaluate(() => CubeViewer.getViewState().pointerCount)).toBe(0);
+
+    // 关闭后再次打开必须重新导航，不能继续复用可能带旧透视参数的 iframe。
+    const firstViewerUrl = await frame.locator("body").evaluate(() => location.href);
+    await frame.locator("body").evaluate(() => { document.body.dataset.staleViewerProbe = "true"; });
+    await page.evaluate(() => core.plugin.cubeWorld.closeViewer());
+    await expect(page.locator("#cube-world-overlay")).toBeHidden();
+    await page.evaluate(() => core.plugin.cubeWorld.openViewer());
+    await expect(page.locator("#cube-world-overlay")).toBeVisible();
+    await expect(frame.locator("body")).not.toHaveAttribute("data-stale-viewer-probe", "true");
+    const secondViewerUrl = await frame.locator("body").evaluate(() => location.href);
+    expect(secondViewerUrl).not.toBe(firstViewerUrl);
+    expect(secondViewerUrl).toContain("&open=");
 });
 
 test("核心图片加载失败时使用占位图提示错误并继续进入游戏", async ({ page }) => {

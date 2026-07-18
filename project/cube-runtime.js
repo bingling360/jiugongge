@@ -19,6 +19,7 @@
         var pendingCrossId = 0;
         var viewerOverlay = null;
         var viewerFrame = null;
+        var viewerOpenId = 0;
         var mobilePad = null;
         var pendingViewQuarter = null;
         var activeMapProjection = null;
@@ -359,15 +360,12 @@
             viewerOverlay.setAttribute("aria-hidden", "false");
             if (!viewerFrame.parentNode) viewerOverlay.appendChild(viewerFrame);
             viewerFrame.inert = false;
-            if (!viewerFrame.dataset.started) {
-                viewerFrame.dataset.started = "true";
-                viewerFrame.src = viewerFrame.dataset.src;
-            }
-            refreshViewer();
-            setTimeout(function () {
-                refreshViewer();
-                if (viewerFrame && viewerFrame.contentWindow) viewerFrame.contentWindow.focus();
-            }, 0);
+            // 查看器是独立 iframe；关闭后复用旧文档会让开发期间修改过的
+            // 投影代码永久滞留。每次打开都创建唯一 URL，加载和聚焦由 load
+            // 事件统一完成，也避免在导航途中误刷新上一版文档。
+            viewerFrame.dataset.started = "true";
+            viewerOpenId++;
+            viewerFrame.src = viewerFrame.dataset.src + "&open=" + Date.now() + "-" + viewerOpenId;
             return true;
         }
 
