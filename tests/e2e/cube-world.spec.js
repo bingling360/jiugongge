@@ -187,6 +187,45 @@ test("跨旋转边后只重排地图格，素材保持正向且没有旋转动�
     }));
     expect(state).toMatchObject({ loc: { x: 3, y: 1, direction: "down" }, route: "down" });
 
+    // 输入分发保留屏幕坐标给 UI，仅在地图寻路处理器边界换成逻辑格；
+    // 手势提示点也必须留在实际按下的屏幕格。
+    const touchInput = await page.evaluate(() => {
+        core.clearMap("ui");
+        let raw = null;
+        const marks = [];
+        const originalFillRect = core.fillRect;
+        core.fillRect = function (ctx, x, y, width, height) {
+            if (ctx === "ui" && width === 8 && height === 8) marks.push({ x, y });
+            return originalFillRect.apply(this, arguments);
+        };
+        core.registerAction("ondown", "cube-input-probe", (x, y, px, py) => {
+            raw = { x, y, px, py };
+            return false;
+        }, 10);
+        const scale = core.domStyle.scale;
+        core.actions.ondown({
+            x: (2 * 32 + 16) * scale,
+            y: (9 * 32 + 16) * scale,
+            size: 32 * scale
+        });
+        core.unregisterAction("ondown", "cube-input-probe");
+        core.fillRect = originalFillRect;
+        const result = {
+            raw,
+            routeStart: core.clone(core.status.stepPostfix[0]),
+            marks
+        };
+        clearTimeout(core.timeout.onDownTimeout);
+        core.timeout.onDownTimeout = null;
+        core.status.stepPostfix = [];
+        core.status.downTime = null;
+        core.clearMap("ui");
+        return result;
+    });
+    expect(touchInput.raw).toEqual({ x: 2, y: 9, px: 80, py: 304 });
+    expect(touchInput.routeStart).toEqual({ x: 3, y: 2 });
+    expect(touchInput.marks.at(-1)).toEqual({ x: 76, y: 300 });
+
     // 逻辑格 (3,2) 旋转后显示在屏幕格 (2,9)；点击所见位置仍应寻路到逻辑格。
     const box = await page.locator("#data").boundingBox();
     await page.locator("#data").click({
@@ -232,7 +271,134 @@ test("旋转朝向下本面战斗结束后不会残留怪物、显伤或动画�
     });
     await moveOnce(page);
 
+    const correspondence = await page.evaluate(() => {
+        const logical = { x: 3, y: 1 };
+        const screen = core.plugin.cubeWorld.logicalCellToScreen(logical.x, logical.y);
+
+        const canonicalRefs = {
+            blocks: core.status.maps.MT3.blocks,
+            map: core.status.maps.MT3.map,
+            images: core.status.maps.MT3.images,
+            blockObjs: core.status.mapBlockObjs.MT3,
+            bg: core.status.bgmaps.MT3,
+            fg: core.status.fgmaps.MT3
+        };
+        core.redrawMap();
+        const canonicalRestored =
+            core.status.maps.MT3.blocks === canonicalRefs.blocks &&
+            core.status.maps.MT3.map === canonicalRefs.map &&
+            core.status.maps.MT3.images === canonicalRefs.images &&
+            core.status.mapBlockObjs.MT3 === canonicalRefs.blockObjs &&
+            core.status.bgmaps.MT3 === canonicalRefs.bg &&
+            core.status.fgmaps.MT3 === canonicalRefs.fg;
+
+        // 动态地图叠加层必须使用与标准地图相同的格映射。
+        const itemStart = core.plugin.pickOneMapItemAnimate("redPotion", logical.x, logical.y);
+        core.plugin.clearAttractAnimate();
+        core.setFlag("comment", true);
+        core.setFlag("commentCollection", { MT3: { "3,1": ["probe"] } });
+        let signCall = null;
+        const originalDrawIcon = core.drawIcon;
+        core.drawIcon = function (ctx, id, x, y) {
+            if (ctx === "sign" && id === "postman") signCall = { x, y };
+            return originalDrawIcon.apply(this, arguments);
+        };
+        core.plugin.drawCommentSign();
+        core.drawIcon = originalDrawIcon;
+        core.plugin.clearCommentSign();
+        core.removeFlag("comment");
+        core.removeFlag("commentCollection");
+
+        // 楼层贴图显隐键属于规范坐标，不能被投影后碰巧同名的 flag 误伤。
+        const probeName = "__cube_floor_probe__.png";
+        const probe = document.createElement("canvas");
+        probe.width = probe.height = 32;
+        probe.getContext("2d").fillStyle = "#ff00ff";
+        probe.getContext("2d").fillRect(0, 0, 32, 32);
+        core.material.images.images[probeName] = probe;
+        const oldImages = core.status.maps.MT3.images;
+        core.status.maps.MT3.images = [{
+            name: probeName, x: logical.x * 32, y: logical.y * 32, canvas: "fg"
+        }];
+        const sourceFlag = `__floorImg__MT3_${logical.x * 32}_${logical.y * 32}`;
+        const collisionFlag = `__floorImg__MT3_${screen.x * 32}_${screen.y * 32}`;
+        core.removeFlag(sourceFlag);
+        core.setFlag(collisionFlag, true);
+        core.redrawMap();
+        const visibleColor = Array.from(core.canvas.fg.getImageData(
+            screen.x * 32 + 16, screen.y * 32 + 16, 1, 1
+        ).data);
+        core.setFlag(sourceFlag, true);
+        core.redrawMap();
+        const hiddenColor = Array.from(core.canvas.fg.getImageData(
+            screen.x * 32 + 16, screen.y * 32 + 16, 1, 1
+        ).data);
+        core.status.maps.MT3.images = oldImages;
+        delete core.material.images.images[probeName];
+        core.removeFlag(sourceFlag);
+        core.removeFlag(collisionFlag);
+        core.redrawMap();
+
+        // 可选的 bg2/fg2 也属于标准投影，不允许留在规范数组坐标。
+        const hadBg2Maps = Object.prototype.hasOwnProperty.call(core.status, "bg2maps");
+        const oldBg2Maps = core.status.bg2maps;
+        const bg2 = Array.from({ length: 13 }, () => Array(13).fill(0));
+        const redPotion = core.getNumberById("redPotion");
+        bg2[logical.y][logical.x] = redPotion;
+        core.status.bg2maps = Object.assign({}, oldBg2Maps || {}, { MT3: bg2 });
+        const layerProjection = core.plugin.cubeWorld.buildMapProjection();
+        const projectedBg2 = layerProjection.layerMaps.bg2[screen.y][screen.x];
+        if (hadBg2Maps) core.status.bg2maps = oldBg2Maps;
+        else delete core.status.bg2maps;
+
+        // 跳跃的地图路径随朝向变化，但抬升始终是屏幕竖直方向。
+        const hero = core.clone(core.status.hero.loc);
+        const heroScreen = core.plugin.cubeWorld.logicalCellToScreen(hero.x, hero.y);
+        const jump = core.maps.__generateJumpInfo(hero.x, hero.y, hero.x, hero.y + 2, 500);
+        jump.width = core.material.icons.hero.width || 32;
+        jump.height = core.material.icons.hero.height;
+        const half = Math.floor(jump.jump_count / 2);
+        for (let i = 0; i < half; i++) core.events._jumpHero_jumping(jump);
+        const jumpCenter = { ...core.status.heroCenter };
+        const standingCenter = {
+            px: heroScreen.x * 32 + 16,
+            py: heroScreen.y * 32 + 32 - core.material.icons.hero.height / 2
+        };
+        core.drawHero();
+
+        return {
+            screen, itemStart, signCall, visibleColor, hiddenColor,
+            projectedBg2, redPotion, jumpCenter, standingCenter, canonicalRestored
+        };
+    });
+    expect(correspondence).toMatchObject({
+        screen: { x: 1, y: 9 },
+        itemStart: { x: 32, y: 288 },
+        signCall: { x: 32, y: 288 },
+        canonicalRestored: true
+    });
+    expect(correspondence.visibleColor).toEqual([255, 0, 255, 255]);
+    expect(correspondence.hiddenColor).not.toEqual([255, 0, 255, 255]);
+    expect(correspondence.projectedBg2).toBe(correspondence.redPotion);
+    expect(correspondence.jumpCenter.px).toBeGreaterThan(correspondence.standingCenter.px);
+    expect(correspondence.jumpCenter.py).toBeLessThan(correspondence.standingCenter.py);
+
+    const skipPerform = await page.evaluate(() => {
+        core.setLocalStorage("skipPerform", true);
+        core.plugin.checkSkipFuncs();
+        const before = core.status.animateObjs.length;
+        const id = core.drawAnimate("hand", 3, 1);
+        const after = core.status.animateObjs.length;
+        core.setLocalStorage("skipPerform", false);
+        core.plugin.checkSkipFuncs();
+        return { id, before, after };
+    });
+    expect(skipPerform).toEqual({ id: -1, before: 0, after: 0 });
+
     await page.evaluate(() => {
+        // 玩法设置会重新绑定动画实现；重绑定后仍必须保留六面投影。
+        core.setLocalStorage("skipPerform", false);
+        core.plugin.checkSkipFuncs();
         core.status.hero.atk = 9999;
         core.status.hero.def = 9999;
         core.setBlock(201, 3, 1, "MT3");
@@ -264,12 +430,27 @@ test("旋转朝向下本面战斗结束后不会残留怪物、显伤或动画�
     expect(placement.total).toBe(placement.projected);
     expect(placement.animateCells).toEqual([{ x: 1, y: 9 }]);
 
+    const windowAnimation = await page.evaluate(() => {
+        const id = core.drawAnimate("hand", 3, 1, true);
+        const obj = core.status.animateObjs.find((one) => one.id === id);
+        const center = { centerX: obj.centerX, centerY: obj.centerY };
+        core.stopAnimate(id, false);
+        return center;
+    });
+    expect(windowAnimation).toEqual({ centerX: 112, centerY: 48 });
+
     await page.evaluate(() => {
         window.__cubeOriginalRedrawMap = core.maps.redrawMap;
+        window.__cubeOriginalDrawAnimateFrame = core.maps._drawAnimateFrame;
         window.__cubeRedrawCount = 0;
+        window.__cubeAnimateCenters = [];
         core.maps.redrawMap = function () {
             window.__cubeRedrawCount++;
             return window.__cubeOriginalRedrawMap.apply(this, arguments);
+        };
+        core.maps._drawAnimateFrame = function (name, animate, centerX, centerY, index) {
+            window.__cubeAnimateCenters.push({ centerX, centerY, index });
+            return window.__cubeOriginalDrawAnimateFrame.apply(this, arguments);
         };
     });
     await page.evaluate(() => new Promise((resolve) => {
@@ -282,9 +463,13 @@ test("旋转朝向下本面战斗结束后不会残留怪物、显伤或动画�
     const residue = await page.evaluate(() => {
         const cell = core.plugin.cubeWorld.logicalCellToScreen(3, 1);
         const redraws = window.__cubeRedrawCount;
+        const animateCenters = window.__cubeAnimateCenters;
         core.maps.redrawMap = window.__cubeOriginalRedrawMap;
+        core.maps._drawAnimateFrame = window.__cubeOriginalDrawAnimateFrame;
         delete window.__cubeOriginalRedrawMap;
+        delete window.__cubeOriginalDrawAnimateFrame;
         delete window.__cubeRedrawCount;
+        delete window.__cubeAnimateCenters;
         const alpha = (id, x, y, width, height) => {
             const data = core.canvas[id].getImageData(x, y, width, height).data;
             let sum = 0;
@@ -292,7 +477,7 @@ test("旋转朝向下本面战斗结束后不会残留怪物、显伤或动画�
             return sum;
         };
         return {
-            quarter: core.plugin.cubeWorld.getViewQuarter(), redraws,
+            quarter: core.plugin.cubeWorld.getViewQuarter(), redraws, animateCenters,
             cell,
             event: alpha("event", cell.x * 32, cell.y * 32, 32, 32),
             event2: alpha("event2", cell.x * 32, Math.max(0, cell.y * 32 - 32), 32, 64),
@@ -308,12 +493,16 @@ test("旋转朝向下本面战斗结束后不会残留怪物、显伤或动画�
                 block.x === 3 && block.y === 1).length
         };
     });
-    expect(residue).toEqual({
+    expect(residue).toMatchObject({
         quarter: 3, redraws: 0, cell: { x: 1, y: 9 },
         event: 0, event2: 0, canonicalEvent: 0, canonicalEvent2: 0,
         totalEvent: 0, totalEvent2: 0, damage: 0, animate: 0,
         globalAtProjected: 0, globalAtCanonical: 0
     });
+    expect(residue.animateCenters.length).toBeGreaterThan(0);
+    expect(residue.animateCenters.every((one) =>
+        one.centerX === 48 && one.centerY === 304
+    )).toBe(true);
 });
 
 test("跨面怪物胜利后进入目标格，块级元数据与远程战斗楼层不会错位", async ({ page }) => {

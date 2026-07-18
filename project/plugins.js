@@ -2080,6 +2080,16 @@ var plugins_bb40132b_638b_4a9f_b028_d3fe47acc8d1 =
 				this.nodes.push({ id, x, y, callback });
 			}
 
+			addMapCell(id, x, y, callback, floorId = core.status.floorId) {
+				let screen = { x, y };
+				const cube = core.plugin.cubeWorld;
+				if (cube && floorId === core.status.floorId && cube.isFace(floorId)) {
+					screen = cube.logicalCellToScreen(x, y);
+				}
+				this.add(id, 32 * screen.x, 32 * screen.y, callback);
+				return { x: 32 * screen.x, y: 32 * screen.y };
+			}
+
 			start() {
 				if (this.isPlaying) return;
 				if (core.isReplaying()) return;
@@ -2152,6 +2162,13 @@ var plugins_bb40132b_638b_4a9f_b028_d3fe47acc8d1 =
 			animateHwnd.add(id, x, y, callback);
 			animateHwnd.start();
 		};
+		/** 从规范地图格开始拾取动画；屏幕像素版 API 保持向后兼容。 */
+		this.pickOneMapItemAnimate = function (id, x, y, callback, floorId) {
+			if (core.isReplaying()) return;
+			const start = animateHwnd.addMapCell(id, x, y, callback, floorId);
+			animateHwnd.start();
+			return start;
+		};
 		/** 在每次切换楼层后调用 */
 		this.clearAttractAnimate = function () {
 			animateHwnd.clear();
@@ -2206,7 +2223,7 @@ var plugins_bb40132b_638b_4a9f_b028_d3fe47acc8d1 =
 					} else if (type === 'item') {
 						const item = core.material.items[block.event.id];
 						if (canGetItem(item, loc, floorId)) {
-							if (!core.isReplaying()) animateHwnd.add(item.id, 32 * tx, 32 * ty);
+							if (!core.isReplaying()) animateHwnd.addMapCell(item.id, tx, ty, null, floorId);
 							core.getItem(item.id, 1, tx, ty);
 						} else {
 							return;
@@ -2349,6 +2366,7 @@ var plugins_bb40132b_638b_4a9f_b028_d3fe47acc8d1 =
 
 		/** 若变量comment为真，在每层切换时在地上有弹幕的地方显示相应图标。 */
 		this.drawCommentSign = function () {
+			core.deleteCanvas('sign');
 			if (!core.hasFlag('comment') || core.isReplaying()) return;
 			let commentCollection = core.getFlag('commentCollection', {}),
 				floorId = core.status.floorId;
@@ -2359,7 +2377,10 @@ var plugins_bb40132b_638b_4a9f_b028_d3fe47acc8d1 =
 					const l = commentCollection[floorId][pos].length;
 					for (let i = 0; i <= l - 1; i++) {
 						const [x, y] = pos.split(',').map(x => Number(x));
-						core.drawIcon('sign', 'postman', 32 * x, 32 * y);
+						const cube = core.plugin.cubeWorld;
+						const screen = cube && cube.isFace(floorId)
+							? cube.logicalCellToScreen(x, y) : { x, y };
+						core.drawIcon('sign', 'postman', 32 * screen.x, 32 * screen.y);
 						break;
 					}
 				}
@@ -4199,13 +4220,16 @@ var plugins_bb40132b_638b_4a9f_b028_d3fe47acc8d1 =
 				core.fillText(canvas, '点击选择一个怪物,点击非怪物图块自动退出', width / 2, 20, 'red', '18px Arial');
 
 				core.registerAction('onclick', 'bestEquip', function (x, y, px, py) {
-					const cls = core.getBlockCls(x, y),
-						id = core.getBlockId(x, y);
+					const cube = core.plugin.cubeWorld;
+					const logical = cube && cube.isFace(core.status.floorId)
+						? cube.screenCellToLogical(x, y) : { x, y };
+					const cls = core.getBlockCls(logical.x, logical.y),
+						id = core.getBlockId(logical.x, logical.y);
 					if (!(cls === 'enemys' || cls === "enemy48")) {
 						finish();
 						return false;
 					}
-					figureBestEquip(id, x, y);
+					figureBestEquip(id, logical.x, logical.y);
 					core.updateDamage();
 					finish();
 				}, 100);
@@ -4771,7 +4795,8 @@ var plugins_bb40132b_638b_4a9f_b028_d3fe47acc8d1 =
 				return true;
 			}.bind(core.events) : events.prototype.__action_checkReplaying;
 
-			const skipPeform = core.getLocalStorage('skipPeform');
+			// 保留旧版拼写作为迁移回退；设置项实际写入的是 skipPerform。
+			const skipPerform = core.getLocalStorage('skipPerform', core.getLocalStorage('skipPeform', false));
 
 			const instantMove = function (fromX, fromY, aimX, aimY, keep, callback) {
 				const [_block, blockInfo] = core.maps._getAndRemoveBlock(fromX, fromY);
@@ -4782,25 +4807,25 @@ var plugins_bb40132b_638b_4a9f_b028_d3fe47acc8d1 =
 				if (callback) callback();
 			}
 
-			core.maps.jumpBlock = skipPeform ? function (sx, sy, ex, ey, time, keep, callback) {
+			core.maps.jumpBlock = skipPerform ? function (sx, sy, ex, ey, time, keep, callback) {
 				return instantMove(sx, sy, ex, ey, keep, callback);
 			}.bind(core.maps) : maps.prototype.jumpBlock;
 
-			core.maps.moveBlock = skipPeform ? function (x, y, steps, time, keep, callback) {
+			core.maps.moveBlock = skipPerform ? function (x, y, steps, time, keep, callback) {
 				maps.prototype.moveBlock(x, y, steps, 1, keep, callback);
 			}.bind(core.maps) : maps.prototype.moveBlock;
 
-			core.maps.drawAnimate = skipPeform ? function (name, x, y, alignWindow, callback) {
+			core.maps.drawAnimate = skipPerform ? function (name, x, y, alignWindow, callback) {
 				if (callback) callback();
 				return -1;
 			}.bind(core.maps) : maps.prototype.drawAnimate;
 
-			core.maps.drawHeroAnimate = skipPeform ? function (name, callback) {
+			core.maps.drawHeroAnimate = skipPerform ? function (name, callback) {
 				if (callback) callback();
 				return -1;
 			}.bind(core.maps) : maps.prototype.drawHeroAnimate;
 
-			core.events.jumpHero = skipPeform ? function (ex, ey, time, callback) {
+			core.events.jumpHero = skipPerform ? function (ex, ey, time, callback) {
 				const { x: sx, y: sy } = core.status.hero.loc;
 				if (ex == null) ex = sx;
 				if (ey == null) ey = sy;
@@ -4811,12 +4836,12 @@ var plugins_bb40132b_638b_4a9f_b028_d3fe47acc8d1 =
 				if (callback) callback();
 			}.bind(core.events) : events.prototype.jumpHero;
 
-			core.events.vibrate = skipPeform ? function (direction, time, speed, power, callback) {
+			core.events.vibrate = skipPerform ? function (direction, time, speed, power, callback) {
 				if (callback) callback();
 				return;
 			}.bind(core.events) : events.prototype.vibrate;
 
-			core.events._action_sleep = skipPeform ? function (data, x, y, prefix) {
+			core.events._action_sleep = skipPerform ? function (data, x, y, prefix) {
 				core.doAction();
 			}.bind(core.events) : events.prototype._action_sleep;
 		}

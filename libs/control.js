@@ -2120,8 +2120,16 @@ control.prototype._replayAction_moveDirectly = function (action) {
         return true;
     }
 
-    core.ui.drawArrow('ui', 32 * nowx + 16 - core.bigmap.offsetX, 32 * nowy + 16 - core.bigmap.offsetY,
-        32 * x + 16 - core.bigmap.offsetX, 32 * y + 16 - core.bigmap.offsetY, '#FF0000', 3);
+    var shownFrom = { x: nowx, y: nowy }, shownTo = { x: x, y: y };
+    var cube = core.plugin && core.plugin.cubeWorld;
+    if (cube && cube.isFace(core.status.floorId)) {
+        shownFrom = cube.logicalCellToScreen(nowx, nowy);
+        shownTo = cube.logicalCellToScreen(x, y);
+    }
+    core.ui.drawArrow('ui', 32 * shownFrom.x + 16 - core.bigmap.offsetX,
+        32 * shownFrom.y + 16 - core.bigmap.offsetY,
+        32 * shownTo.x + 16 - core.bigmap.offsetX,
+        32 * shownTo.y + 16 - core.bigmap.offsetY, '#FF0000', 3);
     var timeout = this.__replay_getTimeout();
     if (ignoreSteps < 10) timeout = timeout * ignoreSteps / 10;
     setTimeout(function () {
