@@ -1259,16 +1259,26 @@
                 if (event.keyCode === 27 || event.keyCode === 67) closeViewer();
             }, true);
 
+            // 查看器 iframe（cube-map-viewer.html）把 C/Esc 转发成 closeCubeMap；
+            // 当焦点在 iframe 内时，父窗口的 keyup 监听收不到按键，故这里也监听该消息，
+            // 确保经由 fly 图标打开的 cube-runtime overlay 同样能用 C/Esc 关闭。
+            window.addEventListener("message", function (event) {
+                if (event.data && event.data.action === "closeCubeMap") {
+                    if (viewerOverlay && viewerOverlay.style.display !== "none") closeViewer();
+                }
+            });
+
             // 按需求：状态栏 fly(楼传) 位置换成「传送门」素材图片，但保留点击打开 3D 地图的功能。
-            // 传送门静态图取自 icons 图集（icons.js → animates.portal，index=17），32×32 与其他状态栏图标同尺寸。
+            // 传送门素材 = 图块 id 为 "portal" 的 animate，对应 animates 图集（core.material.images['animates']）
+            // 中 icons.js → animates.portal 所指向的 tile（index=17），32×32 与其他状态栏图标同尺寸。
             var flyIcon = core.statusBar && core.statusBar.image && core.statusBar.image.fly;
             if (flyIcon) {
-                var iconsImg = core.material.images["icons"];
-                if (iconsImg) {
+                var animatesImg = core.material.images["animates"];
+                if (animatesImg) {
                     var portalIndex = (core.icons && core.icons.animates
                         && typeof core.icons.animates.portal === "number")
                         ? core.icons.animates.portal : 17;
-                    var portalTile = core.splitImage(iconsImg)[portalIndex];
+                    var portalTile = core.splitImage(animatesImg)[portalIndex];
                     if (portalTile && portalTile.src) {
                         flyIcon.src = portalTile.src;
                     }
