@@ -1,6 +1,7 @@
-main.floors.MT4 = {
+main.floors.MT4=
+{
     "floorId": "MT4",
-    "title": "立方体·顶面",
+    "title": "顶面",
     "name": "顶面",
     "canFlyTo": true,
     "canFlyFrom": true,
@@ -10,40 +11,149 @@ main.floors.MT4 = {
     "images": [],
     "ratio": 1,
     "map": [
-        [  0, 27,  0, 31,  0,  0,  0,  0,  0, 31,  0, 28,  0],
-        [ 31,  0,205,  0,  0,  0,  0,  0,  0,  0,205,  0, 31],
-        [  0,  0,  0,  0,  0,  0,210,  0,  0,  0,  0,  0,  0],
-        [  0,  0,  0,  0,  1,  1, 85,  1,  1,  0,  0,  0,  0],
-        [ 28,  0,  0,  0,  1, 27,  0, 28,  1,  0,  0,  0, 27],
-        [  0,  0,  0,210, 85,  0, 35,  0, 85,210,  0,  0,  0],
-        [  0,  0,  0,  0,  1, 36, 23, 22,  1,  0,  0,  0,  0],
-        [  0,  0,  0,  0,  1, 28, 47, 27,  1,  0,  0,  0,  0],
-        [ 27,  0,  0,  0,  1,  1, 85,  1,  1,  0,  0,  0, 28],
-        [  0,  0,  0,  0,  0,  0,210,  0,  0,  0,  0,  0,  0],
-        [  0,  0,  0,  0,  0,  0, 31,  0,  0,  0,  0,  0,  0],
-        [ 31,  0,209,  0,  0,  0,  0,  0,  0,  0,209,  0, 31],
-        [  0, 28,  0, 31,  0,  0,  0,  0,  0, 31,  0, 27,  0]
-    ],
+    [  0,221,121, 85,121, 85, 83, 85,121, 85,121,221,  0],
+    [ 34,  1,204, 27,210, 31,210, 31,210, 27,204,  1, 34],
+    [164,  1, 32,210, 32,210, 21,210, 32,210, 32,  1,163],
+    [164,  0, 30,  1,  1,  1,211,  1,  1,  1, 23,  0,163],
+    [164,  1,121, 81, 27, 81, 81, 81, 22, 81,121,  1,163],
+    [ 81,121,  0, 33,211, 82,204, 82,211, 33,  0,121, 81],
+    [164,  1,121,  1,  0,  1,161,  1,  0,  1,121,  1,163],
+    [164, 81, 27,213, 35,  1,203,  1, 35,213, 27, 81,163],
+    [164, 81, 27, 81, 83,221,  0,221,121, 81, 27, 81,163],
+    [164, 81, 82, 81, 34,  1, 49,  1, 34, 81, 82, 81,163],
+    [161,  1, 21, 34, 33,  1,  0,  1, 33, 34, 21,  1,161],
+    [ 34,  0,  1, 81,  1,  1, 31,  1,  1, 81,  1,  0, 34],
+    [  0,221,161,162,161,  0,  0,  0,161,162,161,221,  0]
+],
     "firstArrive": [
-        {"type":"text","text":"\t[骷髅士兵,skeletonWarrior]击败顶面的四名骷髅士兵，即可打开宝库机关门，取得挑战最终花妖所需的装备和红钥匙。"}
+        "顶面击败本层所有骷髅士兵，将会开启顶面的所有机关门"
     ],
     "parallelDo": "",
     "events": {},
     "changeFloor": {},
     "afterBattle": {
-        "6,2": [{"type":"function","function":"function(){core.plugin.cubeWorld.openDoorsWhenClear('MT4',['skeletonWarrior'],[[6,3],[4,5],[8,5],[6,8]]);}"}],
-        "3,5": [{"type":"function","function":"function(){core.plugin.cubeWorld.openDoorsWhenClear('MT4',['skeletonWarrior'],[[6,3],[4,5],[8,5],[6,8]]);}"}],
-        "9,5": [{"type":"function","function":"function(){core.plugin.cubeWorld.openDoorsWhenClear('MT4',['skeletonWarrior'],[[6,3],[4,5],[8,5],[6,8]]);}"}],
-        "6,9": [{"type":"function","function":"function(){core.plugin.cubeWorld.openDoorsWhenClear('MT4',['skeletonWarrior'],[[6,3],[4,5],[8,5],[6,8]]);}"}]
+        "4,1": [
+            {
+                "type": "setValue",
+                "name": "flag:顶面机关门计数",
+                "operator": "+=",
+                "value": "1"
+            }
+        ],
+        "6,1": [
+            {
+                "type": "setValue",
+                "name": "flag:顶面机关门计数",
+                "operator": "+=",
+                "value": "1"
+            }
+        ],
+        "8,1": [
+            {
+                "type": "setValue",
+                "name": "flag:顶面机关门计数",
+                "operator": "+=",
+                "value": "1"
+            }
+        ],
+        "3,2": [
+            {
+                "type": "setValue",
+                "name": "flag:顶面机关门计数",
+                "operator": "+=",
+                "value": "1"
+            }
+        ],
+        "5,2": [
+            {
+                "type": "setValue",
+                "name": "flag:顶面机关门计数",
+                "operator": "+=",
+                "value": "1"
+            }
+        ],
+        "7,2": [
+            {
+                "type": "setValue",
+                "name": "flag:顶面机关门计数",
+                "operator": "+=",
+                "value": "1"
+            }
+        ],
+        "9,2": [
+            {
+                "type": "setValue",
+                "name": "flag:顶面机关门计数",
+                "operator": "+=",
+                "value": "1"
+            }
+        ]
     },
     "afterGetItem": {},
     "afterOpenDoor": {},
     "cannotMove": {},
-    "bgmap": [],
-    "fgmap": [],
+    "bgmap": [
+
+],
+    "fgmap": [
+
+],
     "width": 13,
     "height": 13,
-    "autoEvent": {},
+    "autoEvent": {
+        "3,0": {
+            "0": {
+                "condition": "flag:顶面机关门计数==7",
+                "currentFloor": true,
+                "priority": 0,
+                "delayExecute": false,
+                "multiExecute": false,
+                "data": [
+                    {
+                        "type": "openDoor",
+                        "loc": [
+                            3,
+                            0
+                        ],
+                        "async": true
+                    },
+                    {
+                        "type": "openDoor",
+                        "loc": [
+                            5,
+                            0
+                        ],
+                        "async": true
+                    },
+                    {
+                        "type": "openDoor",
+                        "loc": [
+                            7,
+                            0
+                        ],
+                        "async": true
+                    },
+                    {
+                        "type": "openDoor",
+                        "loc": [
+                            9,
+                            0
+                        ],
+                        "async": true
+                    },
+                    {
+                        "type": "waitAsync"
+                    },
+                    {
+                        "type": "setValue",
+                        "name": "flag:顶面机关门计数",
+                        "operator": "=",
+                        "value": "null"
+                    }
+                ]
+            }
+        }
+    },
     "beforeBattle": {},
     "cannotMoveIn": {}
-};
+}

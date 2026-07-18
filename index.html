@@ -192,6 +192,106 @@
         <div id="next"></div>
     </div>
 </div>
+<!-- 竖屏下点底部"虚拟键盘"图标，在原本虚拟键盘出现的位置(底部中间)切换出方向键面板 -->
+<div id="dpadPanel" aria-hidden="true">
+    <div class="dpad-btn" data-code="37" id="dpad-left">◀</div>
+    <div class="dpad-btn" data-code="38" id="dpad-up">▲</div>
+    <div class="dpad-btn" data-code="40" id="dpad-down">▼</div>
+    <div class="dpad-btn" data-code="39" id="dpad-right">▶</div>
+</div>
+<script>
+(function () {
+  function setupDpad() {
+    var dpad = document.getElementById('dpadPanel');
+    var kb = document.getElementById('img-keyboard');
+    if (!dpad || !kb) return;
+
+    var active = {};
+    function press(code) {
+      if (active[code]) return;
+      active[code] = true;
+      if (window.core && window.core.onkeyDown) window.core.onkeyDown({ keyCode: code });
+    }
+    function release(code) {
+      if (!active[code]) return;
+      active[code] = false;
+      if (window.core && window.core.onkeyUp) window.core.onkeyUp({ keyCode: code });
+    }
+    function releaseAll() {
+      Object.keys(active).forEach(function (c) {
+        if (active[c]) {
+          var btn = dpad.querySelector('.dpad-btn[data-code="' + c + '"]');
+          if (btn) btn.classList.remove('pressed');
+          release(parseInt(c, 10));
+        }
+      });
+    }
+
+    dpad.querySelectorAll('.dpad-btn').forEach(function (btn) {
+      var code = parseInt(btn.getAttribute('data-code'), 10);
+      btn.addEventListener('pointerdown', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        btn.classList.add('pressed');
+        press(code);
+      });
+      ['pointerup', 'pointercancel'].forEach(function (ev) {
+        btn.addEventListener(ev, function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          btn.classList.remove('pressed');
+          release(code);
+        });
+      });
+    });
+
+    window.addEventListener('pointerup', releaseAll, true);
+    window.addEventListener('pointercancel', releaseAll, true);
+
+    var dpadHidden = false;
+    function isVert() {
+      return !!(window.core && window.core.domStyle && window.core.domStyle.isVertical);
+    }
+    function isPlaying() {
+      return !!(window.core && window.core.isPlaying && window.core.isPlaying());
+    }
+    function apply() {
+      dpad.style.display = (isVert() && isPlaying() && !dpadHidden) ? 'flex' : 'none';
+    }
+
+    var origOnClick = kb.onclick;
+    kb.onclick = function (e) {
+      if (isVert()) {
+        if (e && e.preventDefault) { e.preventDefault(); e.stopPropagation(); }
+        dpadHidden = !dpadHidden;
+        apply();
+        return;
+      }
+      if (origOnClick) origOnClick.call(kb, e);
+      else if (window.core && window.core.openKeyBoard) window.core.openKeyBoard(true);
+    };
+
+    if (window.core.control && window.core.control.registerResize) {
+      window.core.control.registerResize('dpadPanel', function () { apply(); });
+    }
+    window.addEventListener('resize', apply);
+    apply();
+    setTimeout(apply, 300);
+
+    var lastKey = '';
+    setInterval(function () {
+      var key = (isVert() ? 'V' : 'H') + '|' + (isPlaying() ? 'P' : 'N') + '|' + (dpadHidden ? 'H' : 'S');
+      if (key !== lastKey) { lastKey = key; apply(); }
+    }, 400);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', setupDpad);
+  } else {
+    setupDpad();
+  }
+})();
+</script>
 <div id='inputDiv'>
     <div id='inputDialog'>
         <p id="inputMessage">请输入文字...</p>

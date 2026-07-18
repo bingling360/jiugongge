@@ -402,6 +402,51 @@ p#name {
     100% { opacity: 0.95; }
 }
 
+/* 竖屏下由"虚拟键盘"图标切换出的方向键面板（底部中间，占据原虚拟键盘位置） */
+#dpadPanel {
+    position: fixed;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: 56px;
+    z-index: 240;
+    display: none;
+    flex-direction: row;
+    gap: 10px;
+    padding: 10px 14px;
+    background: rgba(20, 22, 48, 0.78);
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    border-radius: 14px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.dpad-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 52px;
+    height: 52px;
+    font-size: 26px;
+    line-height: 1;
+    color: #fff;
+    background: rgba(58, 64, 128, 0.92);
+    border: 1px solid rgba(255, 255, 255, 0.55);
+    border-radius: 12px;
+    cursor: pointer;
+    touch-action: none;
+    -webkit-tap-highlight-color: transparent;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+    transition: background 0.05s, transform 0.05s;
+}
+
+.dpad-btn.pressed {
+    background: rgba(130, 150, 255, 0.98);
+    transform: scale(0.93);
+}
+
 #next {
     width: 5px;
     height: 5px;
