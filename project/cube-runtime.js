@@ -1259,15 +1259,18 @@
                 if (event.keyCode === 27 || event.keyCode === 67) closeViewer();
             }, true);
 
-            var flyIcon = core.statusBar && core.statusBar.image && core.statusBar.image.fly;
-            if (flyIcon) {
-                flyIcon.title = "六面总览（C）";
-                flyIcon.alt = "六面总览";
-                flyIcon.onclick = function (event) {
-                    if (event) event.stopPropagation();
-                    if (!core.isReplaying()) openViewer();
-                };
-            }
+            // [disabled] feat 曾把状态栏 fly(楼层传送) 图标强行改成「六面总览（C）」portal 按钮；
+            // 现按需求还原为 main 的楼层传送图标与行为（引擎 main.js:652 默认 useFly），
+            // 立方体查看器改由 C 键（main 的 cube-map-overlay）打开，互不冲突。
+            // var flyIcon = core.statusBar && core.statusBar.image && core.statusBar.image.fly;
+            // if (flyIcon) {
+            //     flyIcon.title = "六面总览（C）";
+            //     flyIcon.alt = "六面总览";
+            //     flyIcon.onclick = function (event) {
+            //         if (event) event.stopPropagation();
+            //         if (!core.isReplaying()) openViewer();
+            //     };
+            // }
         }
 
         function canCrossTerrain(from, target, direction) {
