@@ -1240,11 +1240,12 @@
             });
             document.body.appendChild(mobilePad);
 
-            core.registerAction("keyUp", "cube-world-viewer", function (keyCode) {
-                if (keyCode !== 67 || !core.status.played) return false;
-                toggleViewer();
-                return true;
-            }, 200);
+            // [disabled] feat 自带的 C 键(67) 3D 地图触发器已按需求禁用；引擎与 viewer 其余逻辑保留
+            // core.registerAction("keyUp", "cube-world-viewer", function (keyCode) {
+            //     if (keyCode !== 67 || !core.status.played) return false;
+            //     toggleViewer();
+            //     return true;
+            // }, 200);
 
             window.addEventListener("keydown", function (event) {
                 if (!viewerOverlay || viewerOverlay.style.display === "none") return;
