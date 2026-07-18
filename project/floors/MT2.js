@@ -15,56 +15,23 @@ main.floors.MT2=
     [  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0],
     [  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0],
     [  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0],
+    [  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,225],
+    [  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  1],
+    [  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,122],
+    [  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  1],
+    [  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,211],
     [  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0],
+    [  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 81],
     [  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0],
-    [  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0],
-    [  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0],
-    [  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0],
-    [  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0],
-    [  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0],
-    [  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0],
-    [  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0]
-    ],
+    [  0,  0,  0,  0,  0,  0,325, 29,  0,  0,  0,  0,  0]
+],
     "firstArrive": [
         "，左面击败本层所有初级卫兵，将会开启左面所有机关门"
     ],
     "parallelDo": "",
     "events": {},
     "changeFloor": {},
-    "afterBattle": {
-        "0,0": [
-            {
-                "type": "setValue",
-                "name": "flag:左面机关门计数",
-                "operator": "+=",
-                "value": "1"
-            }
-        ],
-        "12,0": [
-            {
-                "type": "setValue",
-                "name": "flag:左面机关门计数",
-                "operator": "+=",
-                "value": "1"
-            }
-        ],
-        "0,12": [
-            {
-                "type": "setValue",
-                "name": "flag:左面机关门计数",
-                "operator": "+=",
-                "value": "1"
-            }
-        ],
-        "12,12": [
-            {
-                "type": "setValue",
-                "name": "flag:左面机关门计数",
-                "operator": "+=",
-                "value": "1"
-            }
-        ]
-    },
+    "afterBattle": {},
     "afterGetItem": {},
     "afterOpenDoor": {},
     "cannotMove": {},
@@ -76,60 +43,7 @@ main.floors.MT2=
 ],
     "width": 13,
     "height": 13,
-    "autoEvent": {
-        "0,3": {
-            "0": {
-                "condition": "flag:左面机关门计数==4",
-                "currentFloor": true,
-                "priority": 0,
-                "delayExecute": false,
-                "multiExecute": false,
-                "data": [
-                    {
-                        "type": "openDoor",
-                        "loc": [
-                            0,
-                            3
-                        ],
-                        "async": true
-                    },
-                    {
-                        "type": "openDoor",
-                        "loc": [
-                            0,
-                            5
-                        ],
-                        "async": true
-                    },
-                    {
-                        "type": "openDoor",
-                        "loc": [
-                            0,
-                            7
-                        ],
-                        "async": true
-                    },
-                    {
-                        "type": "openDoor",
-                        "loc": [
-                            0,
-                            9
-                        ],
-                        "async": true
-                    },
-                    {
-                        "type": "waitAsync"
-                    },
-                    {
-                        "type": "setValue",
-                        "name": "flag:左面机关门计数",
-                        "operator": "=",
-                        "value": "null"
-                    }
-                ]
-            }
-        }
-    },
+    "autoEvent": {},
     "beforeBattle": {},
     "cannotMoveIn": {}
 }
