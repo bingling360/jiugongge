@@ -1259,18 +1259,27 @@
                 if (event.keyCode === 27 || event.keyCode === 67) closeViewer();
             }, true);
 
-            // [disabled] feat 曾把状态栏 fly(楼层传送) 图标强行改成「六面总览（C）」portal 按钮；
-            // 现按需求还原为 main 的楼层传送图标与行为（引擎 main.js:652 默认 useFly），
-            // 立方体查看器改由 C 键（main 的 cube-map-overlay）打开，互不冲突。
-            // var flyIcon = core.statusBar && core.statusBar.image && core.statusBar.image.fly;
-            // if (flyIcon) {
-            //     flyIcon.title = "六面总览（C）";
-            //     flyIcon.alt = "六面总览";
-            //     flyIcon.onclick = function (event) {
-            //         if (event) event.stopPropagation();
-            //         if (!core.isReplaying()) openViewer();
-            //     };
-            // }
+            // 按需求：状态栏 fly(楼传) 位置换成「传送门」素材图片，但保留点击打开 3D 地图的功能。
+            // 传送门静态图取自 icons 图集（icons.js → animates.portal，index=17），32×32 与其他状态栏图标同尺寸。
+            var flyIcon = core.statusBar && core.statusBar.image && core.statusBar.image.fly;
+            if (flyIcon) {
+                var iconsImg = core.material.images["icons"];
+                if (iconsImg) {
+                    var portalIndex = (core.icons && core.icons.animates
+                        && typeof core.icons.animates.portal === "number")
+                        ? core.icons.animates.portal : 17;
+                    var portalTile = core.splitImage(iconsImg)[portalIndex];
+                    if (portalTile && portalTile.src) {
+                        flyIcon.src = portalTile.src;
+                    }
+                }
+                flyIcon.title = "六面总览（C）";
+                flyIcon.alt = "六面总览";
+                flyIcon.onclick = function (event) {
+                    if (event) event.stopPropagation();
+                    if (!core.isReplaying()) openViewer();
+                };
+            }
         }
 
         function canCrossTerrain(from, target, direction) {
