@@ -147,6 +147,12 @@ test("六面静态通路连通，机关外敌人可达且开门后中央奖励�
 test("3D 查看器没有隐藏后仍运行的帧循环，并提供六面与关闭入口", () => {
     const html = fs.readFileSync(path.join(root, "cube-map-viewer.html"), "utf8");
     assert.doesNotMatch(html, /requestAnimationFrame/);
+    assert.doesNotMatch(html, /Math\.max\(-90|Math\.min\(90/);
+    assert.match(html, /perspective:\s*none/);
+    assert.match(html, /backface-visibility:\s*hidden/);
+    assert.match(html, /multiplyQuaternion/);
+    assert.match(html, /scale3d\(/);
+    assert.doesNotMatch(html, /transition:\s*transform/);
     for (let index = 0; index < 6; index++) assert.match(html, new RegExp(`data-floor="MT${index}"`));
     assert.match(html, /Esc \/ C 关闭/);
     assert.match(html, /CubeViewer/);

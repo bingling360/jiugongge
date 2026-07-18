@@ -54,6 +54,110 @@ test("真实页面加载六面运行时，并可通过 C 键打开和停止 3D �
     await expect(page.locator("#cube-world-overlay")).toBeHidden();
 });
 
+test("3D 总览保持等边正方体，并能连续越过顶面和底面旋转", async ({ page }) => {
+    await bootGame(page);
+    await page.evaluate(() => core.keyUp(67));
+    await expect(page.locator("#cube-world-overlay")).toBeVisible();
+    const frame = page.frameLocator("#cube-world-frame");
+    await expect(frame.locator("#cube")).toBeVisible();
+
+    const geometry = await frame.locator("#cube").evaluate((cube) => {
+        const matrix = new DOMMatrix(getComputedStyle(cube).transform);
+        const origin = new DOMPoint(0, 0, 0).matrixTransform(matrix);
+        const edge = (x, y, z) => {
+            const end = new DOMPoint(x, y, z).matrixTransform(matrix);
+            const vector = { x: end.x - origin.x, y: end.y - origin.y, z: end.z - origin.z };
+            return {
+                spatial: Math.hypot(vector.x, vector.y, vector.z),
+                projected: Math.hypot(vector.x, vector.y)
+            };
+        };
+        const faces = Array.from(document.querySelectorAll(".face"), (face) => {
+            const style = getComputedStyle(face);
+            const canvas = face.querySelector("canvas");
+            const faceMatrix = new DOMMatrix(style.transform);
+            const center = new DOMPoint(0, 0, 0).matrixTransform(faceMatrix);
+            return {
+                width: parseFloat(style.width), height: parseFloat(style.height),
+                canvasWidth: canvas.width, canvasHeight: canvas.height,
+                backfaceVisibility: style.backfaceVisibility,
+                centerRadius: Math.hypot(center.x, center.y, center.z)
+            };
+        });
+        return {
+            perspective: getComputedStyle(document.getElementById("scene")).perspective,
+            axes: [edge(1, 0, 0), edge(0, 1, 0), edge(0, 0, 1)],
+            faces
+        };
+    });
+
+    expect(geometry.perspective).toBe("none");
+    expect(geometry.faces).toHaveLength(6);
+    for (const face of geometry.faces) {
+        expect(face.width).toBeCloseTo(face.height, 6);
+        expect(face.canvasWidth).toBe(face.canvasHeight);
+        expect(face.backfaceVisibility).toBe("hidden");
+        // CSS 像素布局会将 vmin 结果量化到约 1/64px；这里只容许该级别的舍入误差。
+        expect(Math.abs(face.centerRadius - face.width / 2)).toBeLessThan(0.01);
+    }
+    const spatialLengths = geometry.axes.map((axis) => axis.spatial);
+    const projectedLengths = geometry.axes.map((axis) => axis.projected);
+    expect(Math.max(...spatialLengths) - Math.min(...spatialLengths)).toBeLessThan(1e-6);
+    expect(Math.max(...projectedLengths) - Math.min(...projectedLengths)).toBeLessThan(1e-6);
+
+    // 六个快捷观察按钮也必须把对应面的外法线准确转向观察者。
+    for (let index = 0; index < 6; index++) {
+        const floorId = `MT${index}`;
+        await frame.locator(`[data-face="${floorId}"]`).click();
+        const normal = await frame.locator(`.face[data-floor="${floorId}"]`).evaluate((face) => {
+            const cubeMatrix = new DOMMatrix(getComputedStyle(document.getElementById("cube")).transform);
+            const faceMatrix = new DOMMatrix(getComputedStyle(face).transform);
+            const result = new DOMPoint(0, 0, 1, 0).matrixTransform(cubeMatrix.multiply(faceMatrix));
+            const length = Math.hypot(result.x, result.y, result.z);
+            return { x: result.x / length, y: result.y / length, z: result.z / length };
+        });
+        expect(normal.x).toBeCloseTo(0, 6);
+        expect(normal.y).toBeCloseTo(0, 6);
+        expect(normal.z).toBeCloseTo(1, 6);
+    }
+    await frame.locator("#reset").click();
+
+    const quaternion = () => frame.locator("body").evaluate(() => CubeViewer.getViewState().quaternion);
+    const angularDistance = (left, right) => {
+        const dot = Math.abs(left.reduce((sum, value, index) => sum + value * right[index], 0));
+        return 2 * Math.acos(Math.min(1, dot));
+    };
+    const sceneBox = await frame.locator("#scene").boundingBox();
+    const dragAcrossPole = async () => {
+        const x = sceneBox.x + sceneBox.width / 2;
+        const startY = sceneBox.y + sceneBox.height * 0.24;
+        const endY = sceneBox.y + sceneBox.height * 0.76;
+        await page.mouse.move(x, startY);
+        await page.mouse.down();
+        await page.mouse.move(x, endY, { steps: 12 });
+        await page.mouse.up();
+    };
+
+    const before = await quaternion();
+    await dragAcrossPole();
+    const afterFirstCrossing = await quaternion();
+    await dragAcrossPole();
+    const afterSecondCrossing = await quaternion();
+    expect(angularDistance(before, afterFirstCrossing)).toBeGreaterThan(1);
+    expect(angularDistance(afterFirstCrossing, afterSecondCrossing)).toBeGreaterThan(1);
+    const dynamicAxisLengths = await frame.locator("#cube").evaluate((cube) => {
+        const matrix = new DOMMatrix(getComputedStyle(cube).transform);
+        const origin = new DOMPoint(0, 0, 0).matrixTransform(matrix);
+        return [[1, 0, 0], [0, 1, 0], [0, 0, 1]].map(([x, y, z]) => {
+            const end = new DOMPoint(x, y, z).matrixTransform(matrix);
+            return Math.hypot(end.x - origin.x, end.y - origin.y, end.z - origin.z);
+        });
+    });
+    expect(Math.max(...dynamicAxisLengths) - Math.min(...dynamicAxisLengths)).toBeLessThan(1e-6);
+    await expect(frame.locator("#scene")).not.toHaveClass(/dragging/);
+    expect(await frame.locator("body").evaluate(() => CubeViewer.getViewState().pointerCount)).toBe(0);
+});
+
 test("核心图片加载失败时使用占位图提示错误并继续进入游戏", async ({ page }) => {
     await page.route("**/project/materials/icons.png*", (route) => route.abort());
     await bootGame(page);

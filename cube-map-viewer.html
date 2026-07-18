@@ -12,11 +12,10 @@
         #toolbar button, #close { border: 1px solid rgba(255,255,255,.35); border-radius: 8px; color: inherit; background: rgba(15,23,42,.8); padding: 7px 11px; cursor: pointer; backdrop-filter: blur(6px); }
         #toolbar button:hover, #toolbar button.active { background: #2563eb; border-color: #93c5fd; }
         #close { position: fixed; z-index: 30; top: 12px; right: 12px; width: 38px; height: 38px; padding: 0; font-size: 24px; line-height: 34px; }
-        #scene { position: absolute; inset: 72px 0 42px; display: grid; place-items: center; perspective: 1100px; touch-action: none; cursor: grab; }
+        #scene { position: absolute; inset: 72px 0 42px; display: grid; place-items: center; perspective: none; touch-action: none; cursor: grab; }
         #scene.dragging { cursor: grabbing; }
-        #cube { position: relative; width: var(--face-size); height: var(--face-size); transform-style: preserve-3d; transform: rotateX(-18deg) rotateY(35deg) scale(.72); transition: transform 180ms ease-out; }
-        #scene.dragging #cube { transition: none; }
-        .face { position: absolute; inset: 0; border: 2px solid rgba(191,219,254,.75); background: #111827; box-shadow: inset 0 0 28px rgba(0,0,0,.6); backface-visibility: visible; }
+        #cube { position: relative; width: var(--face-size); height: var(--face-size); transform-style: preserve-3d; transform: rotateX(-35.26438968deg) rotateY(45deg) scale3d(.72,.72,.72); }
+        .face { position: absolute; inset: 0; border: 2px solid rgba(191,219,254,.75); background: #111827; box-shadow: inset 0 0 28px rgba(0,0,0,.6); backface-visibility: hidden; }
         .face canvas { display: block; width: 100%; height: 100%; image-rendering: auto; }
         .face .caption { position: absolute; left: 5px; top: 5px; padding: 3px 7px; border-radius: 5px; background: rgba(0,0,0,.72); font-size: 12px; pointer-events: none; }
         .face.current { border-color: #facc15; box-shadow: 0 0 22px rgba(250,204,21,.85), inset 0 0 25px rgba(0,0,0,.45); }
@@ -63,15 +62,103 @@
             var scene = document.getElementById("scene");
             var cube = document.getElementById("cube");
             var error = document.getElementById("error");
-            var rotation = { x: -18, y: 35 }, scale = 0.72;
-            var dragging = false, pointer = null, lastX = 0, lastY = 0, pinchDistance = null;
+            var FREE_VIEW = { x: -35.26438968, y: 45 };
+            var DRAG_DEGREES_PER_PIXEL = 0.45;
+            var scale = 0.72;
+            var pointers = new Map(), pinchDistance = null;
             var views = {
                 MT0: { x: 0, y: 0 }, MT1: { x: 0, y: 180 }, MT2: { x: 0, y: 90 },
                 MT3: { x: 0, y: -90 }, MT4: { x: -90, y: 0 }, MT5: { x: 90, y: 0 }
             };
 
+            function multiplyQuaternion(left, right) {
+                return {
+                    w: left.w * right.w - left.x * right.x - left.y * right.y - left.z * right.z,
+                    x: left.w * right.x + left.x * right.w + left.y * right.z - left.z * right.y,
+                    y: left.w * right.y - left.x * right.z + left.y * right.w + left.z * right.x,
+                    z: left.w * right.z + left.x * right.y - left.y * right.x + left.z * right.w
+                };
+            }
+
+            function normalizeQuaternion(value) {
+                var length = Math.sqrt(value.w * value.w + value.x * value.x + value.y * value.y + value.z * value.z);
+                if (!length) return { w: 1, x: 0, y: 0, z: 0 };
+                var result = {
+                    w: value.w / length, x: value.x / length,
+                    y: value.y / length, z: value.z / length
+                };
+                // q 与 -q 表示同一姿态；统一符号可避免长期拖动后数值无谓跳变。
+                if (result.w < 0) {
+                    result.w = -result.w; result.x = -result.x;
+                    result.y = -result.y; result.z = -result.z;
+                }
+                return result;
+            }
+
+            function axisAngleQuaternion(x, y, z, degrees) {
+                var radians = degrees * Math.PI / 180;
+                var half = radians / 2, sine = Math.sin(half);
+                return normalizeQuaternion({ w: Math.cos(half), x: x * sine, y: y * sine, z: z * sine });
+            }
+
+            function orientationFromEuler(x, y) {
+                // 与 CSS 的 rotateX(x) rotateY(y) 顺序一致：先绕 Y，再绕 X。
+                return normalizeQuaternion(multiplyQuaternion(
+                    axisAngleQuaternion(1, 0, 0, x),
+                    axisAngleQuaternion(0, 1, 0, y)
+                ));
+            }
+
+            var orientation = orientationFromEuler(FREE_VIEW.x, FREE_VIEW.y);
+
+            function quaternionTransform(value) {
+                var normalized = normalizeQuaternion(value);
+                var vectorLength = Math.sqrt(
+                    normalized.x * normalized.x + normalized.y * normalized.y + normalized.z * normalized.z
+                );
+                if (vectorLength < 1e-10) return "rotate3d(1,0,0,0rad)";
+                var angle = 2 * Math.atan2(vectorLength, normalized.w);
+                return "rotate3d(" + [
+                    normalized.x / vectorLength,
+                    normalized.y / vectorLength,
+                    normalized.z / vectorLength,
+                    angle + "rad"
+                ].join(",") + ")";
+            }
+
             function renderTransform() {
-                cube.style.transform = "rotateX(" + rotation.x + "deg) rotateY(" + rotation.y + "deg) scale(" + scale + ")";
+                cube.style.transform = quaternionTransform(orientation) + " scale3d(" + [scale, scale, scale].join(",") + ")";
+            }
+
+            function clearActiveFace() {
+                document.querySelectorAll("[data-face]").forEach(function (one) { one.classList.remove("active"); });
+            }
+
+            function setView(view, nextScale) {
+                orientation = orientationFromEuler(view.x, view.y);
+                scale = nextScale;
+                renderTransform();
+            }
+
+            function rotateFromPointerDelta(dx, dy) {
+                if (!dx && !dy) return;
+                var aroundScreenX = axisAngleQuaternion(1, 0, 0, -dy * DRAG_DEGREES_PER_PIXEL);
+                var aroundScreenY = axisAngleQuaternion(0, 1, 0, dx * DRAG_DEGREES_PER_PIXEL);
+                orientation = normalizeQuaternion(multiplyQuaternion(
+                    aroundScreenY,
+                    multiplyQuaternion(aroundScreenX, orientation)
+                ));
+            }
+
+            function firstTwoPointersDistance() {
+                if (pointers.size < 2) return null;
+                var iterator = pointers.values();
+                var first = iterator.next().value, second = iterator.next().value;
+                return Math.hypot(first.x - second.x, first.y - second.y);
+            }
+
+            function updateInteractionCursor() {
+                scene.classList.toggle("dragging", pointers.size === 1);
             }
 
             function gameCore() {
@@ -129,15 +216,13 @@
             document.querySelectorAll("[data-face]").forEach(function (button) {
                 button.addEventListener("click", function () {
                     var view = views[button.dataset.face];
-                    rotation.x = view.x; rotation.y = view.y; scale = 0.82;
                     document.querySelectorAll("[data-face]").forEach(function (one) { one.classList.toggle("active", one === button); });
-                    renderTransform();
+                    setView(view, 0.82);
                 });
             });
             document.getElementById("reset").addEventListener("click", function () {
-                rotation.x = -18; rotation.y = 35; scale = .72;
-                document.querySelectorAll("[data-face]").forEach(function (one) { one.classList.remove("active"); });
-                renderTransform();
+                clearActiveFace();
+                setView(FREE_VIEW, 0.72);
             });
             document.getElementById("close").addEventListener("click", function () {
                 var c = gameCore(); if (c) c.plugin.cubeWorld.closeViewer();
@@ -149,35 +234,54 @@
                 }
             });
             scene.addEventListener("pointerdown", function (event) {
-                dragging = true; pointer = event.pointerId; lastX = event.clientX; lastY = event.clientY;
-                scene.classList.add("dragging"); scene.setPointerCapture(event.pointerId);
+                if (event.pointerType === "mouse" && event.button !== 0) return;
+                pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+                pinchDistance = firstTwoPointersDistance();
+                updateInteractionCursor();
+                scene.setPointerCapture(event.pointerId);
+                event.preventDefault();
             });
             scene.addEventListener("pointermove", function (event) {
-                if (!dragging || event.pointerId !== pointer) return;
-                rotation.y += (event.clientX - lastX) * .45;
-                rotation.x = Math.max(-90, Math.min(90, rotation.x - (event.clientY - lastY) * .45));
-                lastX = event.clientX; lastY = event.clientY; renderTransform();
+                var previous = pointers.get(event.pointerId);
+                if (!previous) return;
+                var dx = event.clientX - previous.x, dy = event.clientY - previous.y;
+                previous.x = event.clientX; previous.y = event.clientY;
+                if (pointers.size === 1) {
+                    rotateFromPointerDelta(dx, dy);
+                    clearActiveFace();
+                } else {
+                    var distance = firstTwoPointersDistance();
+                    if (pinchDistance && distance) {
+                        scale = Math.max(0.38, Math.min(1.12, scale * distance / pinchDistance));
+                    }
+                    pinchDistance = distance;
+                }
+                renderTransform();
+                event.preventDefault();
             });
-            function stopDrag(event) {
-                if (event.pointerId !== pointer) return;
-                dragging = false; pointer = null; scene.classList.remove("dragging");
+            function stopPointer(event) {
+                if (!pointers.has(event.pointerId)) return;
+                pointers.delete(event.pointerId);
+                pinchDistance = firstTwoPointersDistance();
+                updateInteractionCursor();
             }
-            scene.addEventListener("pointerup", stopDrag);
-            scene.addEventListener("pointercancel", stopDrag);
+            scene.addEventListener("pointerup", stopPointer);
+            scene.addEventListener("pointercancel", stopPointer);
+            scene.addEventListener("lostpointercapture", stopPointer);
             scene.addEventListener("wheel", function (event) {
                 event.preventDefault(); scale = Math.max(.38, Math.min(1.12, scale - event.deltaY * .0008)); renderTransform();
             }, { passive: false });
-            scene.addEventListener("touchmove", function (event) {
-                if (event.touches.length !== 2) { pinchDistance = null; return; }
-                var dx = event.touches[0].clientX - event.touches[1].clientX;
-                var dy = event.touches[0].clientY - event.touches[1].clientY;
-                var distance = Math.sqrt(dx * dx + dy * dy);
-                if (pinchDistance != null) scale = Math.max(.38, Math.min(1.12, scale * distance / pinchDistance));
-                pinchDistance = distance; renderTransform(); event.preventDefault();
-            }, { passive: false });
-            scene.addEventListener("touchend", function () { pinchDistance = null; });
 
-            window.CubeViewer = { refresh: refresh };
+            window.CubeViewer = {
+                refresh: refresh,
+                getViewState: function () {
+                    return {
+                        quaternion: [orientation.w, orientation.x, orientation.y, orientation.z],
+                        scale: scale,
+                        pointerCount: pointers.size
+                    };
+                }
+            };
             renderTransform();
             window.addEventListener("load", refresh);
         })();
