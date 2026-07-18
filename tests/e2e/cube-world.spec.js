@@ -780,6 +780,164 @@ test("激光与追猎在旋转边后继续沿真实表面直线，目标格不�
     }));
 });
 
+test("追猎怪与普通物品在同面和跨面安全换位，双方块数据均保留", async ({ page }) => {
+    await bootGame(page);
+    const result = await page.evaluate(() => {
+        [[4, 4], [5, 4], [6, 4]].forEach(([x, y]) => core.removeBlock(x, y, "MT0"));
+        core.setBlock(325, 4, 4, "MT0");
+        core.setBlock(21, 5, 4, "MT0");
+        const sameMonster = core.getBlock(4, 4, "MT0", false);
+        const sameItem = core.getBlock(5, 4, "MT0", false);
+        core.setBlockOpacity(0.61, 4, 4, "MT0");
+        sameMonster.chaseMarker = "same-monster";
+        core.setBlockOpacity(0.37, 5, 4, "MT0");
+        sameItem.swapMarker = "same-item";
+        const sameRecord = (core.plugin.cubeWorld.buildCheckBlock("MT0").chase["6,4"] || [])
+            .find((one) => one.source.floorId === "MT0" && one.source.x === 4 && one.source.y === 4);
+        const sameDestination = sameRecord && core.clone(sameRecord.destination);
+        const sameMoved = core.plugin.cubeWorld.executeMonsterMove(sameRecord);
+        const sameSource = core.getBlock(4, 4, "MT0", false);
+        const sameTarget = core.getBlock(5, 4, "MT0", false);
+
+        [[1, 0]].forEach(([x, y]) => core.removeBlock(x, y, "MT2"));
+        [[0, 1], [1, 1]].forEach(([x, y]) => core.removeBlock(x, y, "MT4"));
+        core.setBlock(325, 1, 0, "MT2");
+        core.setBlock(21, 0, 1, "MT4");
+        const crossMonster = core.getBlock(1, 0, "MT2", false);
+        const crossItem = core.getBlock(0, 1, "MT4", false);
+        core.setBlockOpacity(0.73, 1, 0, "MT2");
+        core.setBlockFilter({ hue: 30 }, 1, 0, "MT2");
+        crossMonster.chaseMarker = "cross-monster";
+        core.setEnemyOnPoint(1, 0, "MT2", "hp", 777, null, null, true);
+        core.setBlockOpacity(0.46, 0, 1, "MT4");
+        core.setBlockFilter({ blur: 1 }, 0, 1, "MT4");
+        crossItem.swapMarker = "cross-item";
+        crossItem.event.event = [{ type: "tip", text: "跨面换位后保留" }];
+        const crossRecord = (core.plugin.cubeWorld.buildCheckBlock("MT4").chase["1,1"] || [])
+            .find((one) => one.source.floorId === "MT2" && one.source.x === 1 && one.source.y === 0);
+        const crossDestination = crossRecord && core.clone(crossRecord.destination);
+        const crossMoved = core.plugin.cubeWorld.executeMonsterMove(crossRecord);
+        const crossSource = core.getBlock(1, 0, "MT2", false);
+        const crossTarget = core.getBlock(0, 1, "MT4", false);
+
+        return {
+            same: {
+                destination: sameDestination, moved: sameMoved,
+                sourceId: sameSource && sameSource.event.id,
+                sourceOpacity: sameSource && sameSource.opacity,
+                sourceMarker: sameSource && sameSource.swapMarker,
+                targetId: sameTarget && sameTarget.event.id,
+                targetOpacity: sameTarget && sameTarget.opacity,
+                targetMarker: sameTarget && sameTarget.chaseMarker
+            },
+            cross: {
+                destination: crossDestination, moved: crossMoved,
+                sourceId: crossSource && crossSource.event.id,
+                sourceNumber: core.getMapNumber(1, 0, "MT2", true),
+                sourceOpacity: crossSource && crossSource.opacity,
+                sourceOpacityFlag: core.maps._getBlockOpacityFromFlag("MT2", 1, 0),
+                sourceFilter: crossSource && crossSource.filter,
+                sourceFilterFlag: core.maps._getBlockFilterFromFlag("MT2", 1, 0),
+                sourceMarker: crossSource && crossSource.swapMarker,
+                sourceEvent: crossSource && crossSource.event.event,
+                targetId: crossTarget && crossTarget.event.id,
+                targetNumber: core.getMapNumber(0, 1, "MT4", true),
+                targetOpacity: crossTarget && crossTarget.opacity,
+                targetOpacityFlag: core.maps._getBlockOpacityFromFlag("MT4", 0, 1),
+                targetFilter: crossTarget && crossTarget.filter,
+                targetFilterFlag: core.maps._getBlockFilterFromFlag("MT4", 0, 1),
+                targetMarker: crossTarget && crossTarget.chaseMarker,
+                targetHp: core.getEnemyValue("keiskeiFairy", "hp", 0, 1, "MT4")
+            }
+        };
+    });
+
+    expect(result.same).toEqual({
+        destination: { floorId: "MT0", x: 5, y: 4, direction: "right" }, moved: true,
+        sourceId: "yellowKey", sourceOpacity: 0.37, sourceMarker: "same-item",
+        targetId: "keiskeiFairy", targetOpacity: 0.61, targetMarker: "same-monster"
+    });
+    expect(result.cross).toEqual({
+        destination: { floorId: "MT4", x: 0, y: 1, direction: "right" }, moved: true,
+        sourceId: "yellowKey", sourceNumber: 21, sourceOpacity: 0.46, sourceOpacityFlag: 0.46,
+        sourceFilter: { blur: 1 }, sourceFilterFlag: { blur: 1 }, sourceMarker: "cross-item",
+        sourceEvent: [{ type: "tip", text: "跨面换位后保留" }],
+        targetId: "keiskeiFairy", targetNumber: 325, targetOpacity: 0.73, targetOpacityFlag: 0.73,
+        targetFilter: { hue: 30 }, targetFilterFlag: { hue: 30 },
+        targetMarker: "cross-monster", targetHp: 777
+    });
+});
+
+test("带事件数据的物品阻挡追猎，阻击怪仍只能退到空格", async ({ page }) => {
+    await bootGame(page);
+    const result = await page.evaluate(() => {
+        [[2, 2], [3, 2], [4, 2]].forEach(([x, y]) => core.removeBlock(x, y, "MT0"));
+        core.setBlock(325, 2, 2, "MT0");
+        core.setBlock(21, 3, 2, "MT0");
+        core.getBlock(3, 2, "MT0", false).event.data = [{ type: "tip", text: "阻挡追猎" }];
+        const check = core.plugin.cubeWorld.buildCheckBlock("MT0");
+        const fromSource = (records) => (records || []).filter((one) =>
+            one.source.floorId === "MT0" && one.source.x === 2 && one.source.y === 2);
+        const atItem = fromSource(check.chase["3,2"]);
+        const behindItem = fromSource(check.chase["4,2"]);
+        const forgedChaseMoved = core.plugin.cubeWorld.executeMonsterMove({
+            cube: true, kind: "chase", id: "keiskeiFairy",
+            source: { floorId: "MT0", x: 2, y: 2 },
+            destination: { floorId: "MT0", x: 3, y: 2, direction: "right" }
+        });
+
+        [[8, 8], [9, 8]].forEach(([x, y]) => core.removeBlock(x, y, "MT0"));
+        core.setBlock(326, 8, 8, "MT0");
+        core.setBlock(21, 9, 8, "MT0");
+        const repulse = (core.plugin.cubeWorld.buildCheckBlock("MT0").repulse["7,8"] || [])
+            .find((one) => one.source.floorId === "MT0" && one.source.x === 8 && one.source.y === 8);
+        const repulseDestination = repulse && repulse.destination;
+        const forgedRepulse = core.clone(repulse);
+        forgedRepulse.destination = { floorId: "MT0", x: 9, y: 8, direction: "right" };
+        const forgedRepulseMoved = core.plugin.cubeWorld.executeMonsterMove(forgedRepulse);
+
+        [[10, 10], [11, 10]].forEach(([x, y]) => core.removeBlock(x, y, "MT0"));
+        core.setBlock(325, 10, 10, "MT0");
+        core.setBlock(21, 11, 10, "MT0");
+        core.hideBlock(11, 10, "MT0");
+        const hiddenMoved = core.plugin.cubeWorld.executeMonsterMove({
+            cube: true, kind: "chase", id: "keiskeiFairy",
+            source: { floorId: "MT0", x: 10, y: 10 },
+            destination: { floorId: "MT0", x: 11, y: 10, direction: "right" }
+        });
+        const hiddenTarget = core.getBlock(11, 10, "MT0", true);
+
+        return {
+            chase: {
+                atItem: atItem.length, behindItem: behindItem.length, forgedMoved: forgedChaseMoved,
+                sourceId: core.getBlockId(2, 2, "MT0"), targetId: core.getBlockId(3, 2, "MT0")
+            },
+            repulse: {
+                destination: repulseDestination, forgedMoved: forgedRepulseMoved,
+                sourceId: core.getBlockId(8, 8, "MT0"), targetId: core.getBlockId(9, 8, "MT0")
+            },
+            hidden: {
+                moved: hiddenMoved, sourceId: core.getBlockId(10, 10, "MT0"),
+                targetId: hiddenTarget && hiddenTarget.event.id,
+                targetDisabled: hiddenTarget && hiddenTarget.disable
+            }
+        };
+    });
+
+    expect(result.chase).toEqual({
+        atItem: 0, behindItem: 0, forgedMoved: false,
+        sourceId: "keiskeiFairy", targetId: "yellowKey"
+    });
+    expect(result.repulse).toEqual({
+        destination: null, forgedMoved: false,
+        sourceId: "tulipFairy", targetId: "yellowKey"
+    });
+    expect(result.hidden).toEqual({
+        moved: false, sourceId: "keiskeiFairy",
+        targetId: "yellowKey", targetDisabled: true
+    });
+});
+
 test("跨面光环与支援携带来源楼层，底面清怪后四扇机关门全部开启", async ({ page }) => {
     await bootGame(page);
     const mechanics = await page.evaluate(() => {

@@ -67,6 +67,10 @@
             return core.getBlock(point.x, point.y, point.floorId, false);
         }
 
+        function getBlockIncludingDisabled(point) {
+            return core.getBlock(point.x, point.y, point.floorId, true);
+        }
+
         function isEnemyBlock(block) {
             return !!(block && block.event && /^enemy/.test(block.event.cls || ""));
         }
@@ -79,7 +83,8 @@
         }
 
         function isMonsterDestinationEmpty(point) {
-            return getBlock(point) == null;
+            // 隐藏事件仍占用事件层，不能当作空格覆盖。
+            return getBlockIncludingDisabled(point) == null;
         }
 
         function locKey(point) {
@@ -251,8 +256,83 @@
             var faceIds = placed.event && placed.event.faceIds;
             if (faceIds && destinationDirection && faceIds[destinationDirection]) {
                 placed.event.id = faceIds[destinationDirection];
-                placed.id = core.getNumberById(placed.event.id);
+                placed.id = getPlacementNumber(snapshot, destinationDirection);
             }
+        }
+
+        function getPlacementNumber(snapshot, destinationDirection) {
+            if (!snapshot || !snapshot.event) return 0;
+            var targetId = snapshot.event.id;
+            var faceIds = snapshot.event.faceIds;
+            if (faceIds && destinationDirection && faceIds[destinationDirection]) {
+                targetId = faceIds[destinationDirection];
+            }
+            var number = core.getNumberById(targetId);
+            if (!(number > 0) && targetId === snapshot.event.id && snapshot.id > 0) number = snapshot.id;
+            return number;
+        }
+
+        function placeBlockSnapshot(snapshot, destination, destinationDirection) {
+            var number = getPlacementNumber(snapshot, destinationDirection);
+            if (!(number > 0)) return null;
+            core.setBlock(number, destination.x, destination.y, destination.floorId);
+            var placed = core.getBlock(destination.x, destination.y, destination.floorId, false);
+            if (!placed) return null;
+            copyBlockMetadata(snapshot, placed, destinationDirection);
+            placed.x = destination.x;
+            placed.y = destination.y;
+            // opacity/filter 同时存于坐标 flags；只改 block 对象会在存读档后回弹。
+            if (core.setBlockOpacity) {
+                core.setBlockOpacity(snapshot.opacity == null ? null : snapshot.opacity,
+                    destination.x, destination.y, destination.floorId);
+            }
+            if (core.setBlockFilter) {
+                core.setBlockFilter(snapshot.filter == null ? null : snapshot.filter,
+                    destination.x, destination.y, destination.floorId);
+            }
+            return placed;
+        }
+
+        function invalidateBlockCaches(source, destination) {
+            if (!core.status.mapBlockObjs) return;
+            core.status.mapBlockObjs[source.floorId] = null;
+            core.status.mapBlockObjs[destination.floorId] = null;
+        }
+
+        function getEnemyOnPointStore() {
+            var hero = core.status && core.status.hero;
+            if (!hero || !hero.flags) return null;
+            if (!hero.flags.enemyOnPoint) hero.flags.enemyOnPoint = {};
+            return hero.flags.enemyOnPoint;
+        }
+
+        function getEnemyPointInfo(store, point) {
+            return core.clone(((store[point.floorId] || {})[point.x + "," + point.y]) || null);
+        }
+
+        function setEnemyPointInfo(store, point, value) {
+            var key = point.x + "," + point.y;
+            if (store[point.floorId]) delete store[point.floorId][key];
+            if (value == null) return;
+            if (!store[point.floorId]) store[point.floorId] = {};
+            store[point.floorId][key] = core.clone(value);
+        }
+
+        function moveEnemyPointInfo(source, destination) {
+            var store = getEnemyOnPointStore();
+            if (!store) return;
+            var sourceInfo = getEnemyPointInfo(store, source);
+            setEnemyPointInfo(store, source, null);
+            setEnemyPointInfo(store, destination, sourceInfo);
+        }
+
+        function exchangeEnemyPointInfo(source, destination, destinationIsEnemy) {
+            var store = getEnemyOnPointStore();
+            if (!store) return;
+            var sourceInfo = getEnemyPointInfo(store, source);
+            var destinationInfo = destinationIsEnemy ? getEnemyPointInfo(store, destination) : null;
+            setEnemyPointInfo(store, source, destinationInfo);
+            setEnemyPointInfo(store, destination, sourceInfo);
         }
 
         function relocateBlock(source, destination) {
@@ -261,23 +341,79 @@
             var block = core.getBlock(source.x, source.y, source.floorId, false);
             if (!block || block.disable || !block.event) return false;
             var snapshot = core.clone(block);
-            var targetId = snapshot.event.id;
-            var faceIds = snapshot.event.faceIds;
-            if (faceIds && destination.direction && faceIds[destination.direction]) targetId = faceIds[destination.direction];
-            var number = core.getNumberById(targetId);
-            if (!(number > 0)) return false;
-            core.removeBlock(source.x, source.y, source.floorId);
-            core.setBlock(number, destination.x, destination.y, destination.floorId);
-            var placed = core.getBlock(destination.x, destination.y, destination.floorId, false);
-            if (!placed) return false;
-            copyBlockMetadata(snapshot, placed, destination.direction);
-            placed.x = destination.x;
-            placed.y = destination.y;
-            if (core.status.mapBlockObjs) {
-                core.status.mapBlockObjs[source.floorId] = null;
-                core.status.mapBlockObjs[destination.floorId] = null;
+            if (!(getPlacementNumber(snapshot, destination.direction) > 0)) return false;
+            try {
+                core.removeBlock(source.x, source.y, source.floorId);
+                if (!placeBlockSnapshot(snapshot, destination, destination.direction)) throw new Error("图块搬运失败");
+                moveEnemyPointInfo(source, destination);
+                invalidateBlockCaches(source, destination);
+                return true;
+            } catch (error) {
+                // 正常注册图块不会走到这里；仍尽力恢复源图块，避免失败时静默丢失。
+                try {
+                    core.removeBlock(destination.x, destination.y, destination.floorId);
+                    placeBlockSnapshot(snapshot, source, null);
+                } catch (rollbackError) { }
+                invalidateBlockCaches(source, destination);
+                return false;
             }
-            return true;
+        }
+
+        function isChaseDestinationPassable(point) {
+            var block = getBlock(point);
+            if (!block) return true;
+            if (block.disable || !block.event || block.event.data) return false;
+            return core.control.getChaseType().indexOf(block.event.cls || "") >= 0;
+        }
+
+        function getReverseDestinationDirection(source, destination) {
+            if (!destination.direction) return null;
+            var direction = geometry.opposite(destination.direction);
+            var reverse = geometry.step(state(destination.floorId, destination.x, destination.y, direction), direction);
+            if (reverse.floorId !== source.floorId || reverse.x !== source.x || reverse.y !== source.y) return null;
+            return reverse.direction;
+        }
+
+        function moveChasingBlock(source, destination) {
+            if (!source || !destination || !isFace(source.floorId) || !isFace(destination.floorId)) return false;
+            if (source.floorId === destination.floorId && source.x === destination.x && source.y === destination.y) return false;
+            var sourceBlock = getBlock(source);
+            if (!sourceBlock || sourceBlock.disable || !sourceBlock.event) return false;
+            var destinationBlock = getBlock(destination);
+            if (!destinationBlock) return relocateBlock(source, destination);
+            if (!isChaseDestinationPassable(destination)) return false;
+
+            var sourceSnapshot = core.clone(sourceBlock);
+            var destinationSnapshot = core.clone(destinationBlock);
+            var destinationIsEnemy = isEnemyBlock(destinationBlock);
+            var displacedDirection = destinationIsEnemy
+                ? getReverseDestinationDirection(source, destination) : null;
+            if (destinationIsEnemy && !displacedDirection) return false;
+            if (!(getPlacementNumber(sourceSnapshot, destination.direction) > 0) ||
+                !(getPlacementNumber(destinationSnapshot, displacedDirection) > 0)) return false;
+
+            // 事件层不支持两个图块长期占据同一格。先同时移除，再将追猎怪和
+            // 可穿越图块换位；这样物品不会被 setBlock 覆盖删除。
+            try {
+                core.removeBlock(source.x, source.y, source.floorId);
+                core.removeBlock(destination.x, destination.y, destination.floorId);
+                var displaced = placeBlockSnapshot(destinationSnapshot, source, displacedDirection);
+                var chasing = placeBlockSnapshot(sourceSnapshot, destination, destination.direction);
+                if (!displaced || !chasing) throw new Error("追猎换位失败");
+                exchangeEnemyPointInfo(source, destination, destinationIsEnemy);
+                invalidateBlockCaches(source, destination);
+                return true;
+            } catch (error) {
+                // 两个落点均已知合法；若底层放置仍失败，则清理半成品并回滚。
+                try {
+                    core.removeBlock(source.x, source.y, source.floorId);
+                    core.removeBlock(destination.x, destination.y, destination.floorId);
+                    placeBlockSnapshot(sourceSnapshot, source, null);
+                    placeBlockSnapshot(destinationSnapshot, destination, null);
+                } catch (rollbackError) { }
+                invalidateBlockCaches(source, destination);
+                return false;
+            }
         }
 
         function refreshDamage() {
@@ -291,8 +427,10 @@
         function executeMonsterMove(record) {
             if (!record || !record.destination) return false;
             var sourceBlock = core.getBlock(record.source.x, record.source.y, record.source.floorId, false);
-            if (!sourceBlock || (record.id && sourceBlock.event.id !== record.id)) return false;
-            var moved = relocateBlock(record.source, record.destination);
+            if (!sourceBlock || !sourceBlock.event || (record.id && sourceBlock.event.id !== record.id)) return false;
+            var moved = record.kind === "chase"
+                ? moveChasingBlock(record.source, record.destination)
+                : relocateBlock(record.source, record.destination);
             if (moved) refreshDamage();
             return moved;
         }
