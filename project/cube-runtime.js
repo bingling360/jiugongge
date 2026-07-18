@@ -21,8 +21,11 @@
         var viewerFrame = null;
         var mobilePad = null;
         var pendingViewQuarter = null;
-        var mapRenderDepth = 0;
+        var activeMapProjection = null;
+        var projectionRenderDepth = 0;
+        var projectedOperationDepth = 0;
         var mapRendererInstalled = false;
+        var PROJECTED_BLOCK = "__cubeProjectedBlock__";
         var VIEW_QUARTER_FLAG = "__cubeViewQuarter__";
         var KEY_DIRECTIONS = { 37: "left", 38: "up", 39: "right", 40: "down" };
 
@@ -404,8 +407,9 @@
             return quarter;
         }
 
-        function currentFaceSize() {
-            var floor = core.floors[core.status && core.status.floorId] || {};
+        function currentFaceSize(floorId) {
+            floorId = floorId || (core.status && core.status.floorId);
+            var floor = core.floors[floorId] || {};
             return floor.width || core.__SIZE__ || 13;
         }
 
@@ -421,9 +425,9 @@
 
         // 32px 格子左上角的连续映射。它只旋转运动向量和格子位置，传给
         // drawImage 的源像素与目标宽高不变，因此人物素材始终保持正向。
-        function mapMovingCellTopLeft(px, py) {
-            var quarter = getViewQuarter();
-            var length = currentFaceSize() * 32;
+        function mapMovingCellTopLeft(px, py, floorId, quarter) {
+            if (quarter == null) quarter = getViewQuarter();
+            var length = currentFaceSize(floorId) * 32;
             if (quarter === 1) return { x: length - 32 - py, y: px };
             if (quarter === 2) return { x: length - 32 - px, y: length - 32 - py };
             if (quarter === 3) return { x: py, y: length - 32 - px };
@@ -432,16 +436,18 @@
 
         // 显伤、动画中心和楼层贴图的格内偏移属于屏幕排版，不应随地图
         // 转成侧向；只替换它们所在的格子。
-        function mapPixelKeepingCellOffset(px, py) {
-            var size = currentFaceSize();
+        function mapPixelKeepingCellOffset(px, py, floorId, quarter) {
+            if (quarter == null) quarter = getViewQuarter();
+            var size = currentFaceSize(floorId);
             var cellX = Math.max(0, Math.min(size - 1, Math.floor(px / 32)));
             var cellY = Math.max(0, Math.min(size - 1, Math.floor(py / 32)));
-            var screen = CubeWorld.logicalToScreenCell(cellX, cellY, size, getViewQuarter());
+            var screen = CubeWorld.logicalToScreenCell(cellX, cellY, size, quarter);
             return { x: screen.x * 32 + px - cellX * 32, y: screen.y * 32 + py - cellY * 32 };
         }
 
-        function hasMapOrientation() {
-            return !!(core.status && isFace(core.status.floorId) && getViewQuarter() !== 0);
+        function hasMapOrientation(floorId) {
+            floorId = floorId || (core.status && core.status.floorId);
+            return !!(core.status && floorId === core.status.floorId && isFace(floorId) && getViewQuarter() !== 0);
         }
 
         function setupMapPresentation() {
@@ -463,9 +469,10 @@
             return core.dom.gameDraw;
         }
 
-        function mapBlockInfoDirection(blockInfo) {
+        function projectBlockInfoDirection(blockInfo, quarter) {
             if (!blockInfo || !blockInfo.faceIds || !Object.keys(blockInfo.faceIds).length) return blockInfo;
-            var screenDirection = CubeWorld.logicalToScreenDirection(blockInfo.face, getViewQuarter());
+            if (quarter == null) quarter = getViewQuarter();
+            var screenDirection = CubeWorld.logicalToScreenDirection(blockInfo.face, quarter);
             var screenId = blockInfo.faceIds[screenDirection];
             var icons = core.material.icons[blockInfo.cls] || {};
             if (screenId == null || icons[screenId] == null) return blockInfo;
@@ -476,196 +483,305 @@
             });
         }
 
-        function mapContext(ctx) {
-            return typeof ctx === "string" ? core.canvas[ctx] : ctx;
+        function markProjectedBlock(block) {
+            try {
+                Object.defineProperty(block, PROJECTED_BLOCK, { value: true, configurable: true });
+            } catch (e) {
+                block[PROJECTED_BLOCK] = true;
+            }
+            return block;
         }
 
-        function isMapContext(ctx) {
-            var actual = mapContext(ctx);
+        function isProjectedBlock(block) {
+            return !!(block && block[PROJECTED_BLOCK]);
+        }
+
+        function projectBlock(block, floorId, quarter) {
+            if (!block || isProjectedBlock(block)) return block;
+            floorId = floorId || core.status.floorId;
+            if (quarter == null) quarter = getViewQuarter();
+            var screen = CubeWorld.logicalToScreenCell(block.x, block.y, currentFaceSize(floorId), quarter);
+            var projected = Object.assign({}, block, { x: screen.x, y: screen.y });
+            if (block.event) {
+                projected.event = Object.assign({}, block.event);
+                var faceIds = block.event.faceIds || {};
+                var logicalDirection = Object.keys(faceIds).filter(function (direction) {
+                    return faceIds[direction] === block.event.id;
+                })[0];
+                var screenDirection = CubeWorld.logicalToScreenDirection(logicalDirection, quarter);
+                var screenId = faceIds[screenDirection];
+                if (screenId) {
+                    projected.event.id = screenId;
+                    var screenNumber = core.getNumberById(screenId);
+                    if (screenNumber > 0) projected.id = screenNumber;
+                }
+            }
+            return markProjectedBlock(projected);
+        }
+
+        function projectMapNumber(number, floorId, quarter) {
+            number = number && number.idnum || number || 0;
+            if (!number) return 0;
+            var source = core.getBlockByNumber(number);
+            if (!source || !source.event) return number;
+            return projectBlock({ x: 0, y: 0, id: number, event: source.event }, floorId, quarter).id;
+        }
+
+        function projectMapArray(array, floorId, quarter) {
+            var floor = core.floors[floorId];
+            var width = floor.width, height = floor.height;
+            if (width !== height) throw new Error("立方体面必须是正方形地图：" + floorId);
+            var projected = [];
+            for (var y = 0; y < height; y++) projected.push(Array(width).fill(0));
+            for (var y = 0; y < height; y++) {
+                for (var x = 0; x < width; x++) {
+                    var screen = CubeWorld.logicalToScreenCell(x, y, width, quarter);
+                    projected[screen.y][screen.x] = projectMapNumber((array[y] || [])[x], floorId, quarter);
+                }
+            }
+            return projected;
+        }
+
+        function projectFloorImages(images, floorId, quarter) {
+            return (images || []).map(function (one) {
+                var screen = mapPixelKeepingCellOffset(one.x || 0, one.y || 0, floorId, quarter);
+                return Object.assign({}, one, { x: screen.x, y: screen.y });
+            });
+        }
+
+        // 构造一份只用于显示的标准地图。逻辑地图、事件坐标和存档数据都不
+        // 修改；引擎绘制期间临时看到的是这份已经完成拓扑旋转的普通地图。
+        function buildMapProjection(floorId) {
+            floorId = floorId || core.status.floorId;
+            if (activeMapProjection && activeMapProjection.floorId === floorId) {
+                return activeMapProjection;
+            }
+            var quarter = getViewQuarter();
+            var floor = core.floors[floorId];
+            var map = core.status.maps[floorId];
+            if (!floor || !map) return null;
+            if (floor.width !== floor.height) throw new Error("立方体面必须是正方形地图：" + floorId);
+            core.extractBlocks(floorId);
+            var blocks = (map.blocks || []).map(function (block) {
+                return projectBlock(block, floorId, quarter);
+            });
+            var blockObjs = {};
+            blocks.forEach(function (block) { blockObjs[block.x + "," + block.y] = block; });
+            return {
+                floorId: floorId,
+                quarter: quarter,
+                blocks: blocks,
+                blockObjs: blockObjs,
+                map: core.maps._getMapArrayFromBlocks(blocks, floor.width, floor.height),
+                bgmap: projectMapArray(core.maps._getBgFgMapArray("bg", floorId), floorId, quarter),
+                fgmap: projectMapArray(core.maps._getBgFgMapArray("fg", floorId), floorId, quarter),
+                images: projectFloorImages(map.images || [], floorId, quarter)
+            };
+        }
+
+        function withMapProjection(projection, owner, func, args) {
+            if (!projection) return func.apply(owner, args);
+            var floorId = projection.floorId;
+            var map = core.status.maps[floorId];
+            var bgmaps = core.status.bgmaps || (core.status.bgmaps = {});
+            var fgmaps = core.status.fgmaps || (core.status.fgmaps = {});
+            var mapBlockObjs = core.status.mapBlockObjs || (core.status.mapBlockObjs = {});
+            var saved = {
+                blocks: map.blocks,
+                map: map.map,
+                images: map.images,
+                bgmap: bgmaps[floorId],
+                fgmap: fgmaps[floorId],
+                blockObjs: mapBlockObjs[floorId],
+                active: activeMapProjection
+            };
+            map.blocks = projection.blocks;
+            map.map = projection.map;
+            map.images = projection.images;
+            bgmaps[floorId] = projection.bgmap;
+            fgmaps[floorId] = projection.fgmap;
+            mapBlockObjs[floorId] = projection.blockObjs;
+            activeMapProjection = projection;
+            projectionRenderDepth++;
+            try {
+                return func.apply(owner, args);
+            } finally {
+                projectionRenderDepth--;
+                activeMapProjection = saved.active;
+                map.blocks = saved.blocks;
+                map.map = saved.map;
+                map.images = saved.images;
+                bgmaps[floorId] = saved.bgmap;
+                fgmaps[floorId] = saved.fgmap;
+                mapBlockObjs[floorId] = saved.blockObjs;
+            }
+        }
+
+        function runProjectedOperation(owner, func, args) {
+            projectedOperationDepth++;
+            try {
+                return func.apply(owner, args);
+            } finally {
+                projectedOperationDepth--;
+            }
+        }
+
+        function isMapDrawingContext(ctx) {
+            if (ctx == null) return true;
+            var actual = typeof ctx === "string" ? core.canvas[ctx] : ctx;
             return ["bg", "bg2", "event", "event2", "fg", "fg2"].some(function (name) {
                 return core.canvas[name] && actual === core.canvas[name];
             });
         }
 
-        function shouldMapBlockContext(ctx) {
-            return hasMapOrientation() && (mapRenderDepth > 0 || isMapContext(ctx));
-        }
-
-        function runMapRender(active, owner, func, args) {
-            if (!active) return func.apply(owner, args);
-            mapRenderDepth++;
-            try {
-                return func.apply(owner, args);
-            } finally {
-                mapRenderDepth--;
-            }
-        }
-
-        function configDrawsOnMap(config) {
-            if (config == null) return true;
-            if (typeof config === "string" || config.canvas) return false;
-            return config.ctx == null;
+        function projectVector(x, y, quarter) {
+            quarter = CubeWorld.normalizeQuarter(quarter);
+            if (quarter === 1) return { x: -y, y: x };
+            if (quarter === 2) return { x: -x, y: -y };
+            if (quarter === 3) return { x: y, y: -x };
+            return { x: x, y: y };
         }
 
         function installMapRenderer() {
             if (mapRendererInstalled) return;
             mapRendererInstalled = true;
 
-            var originalBgDraw = core.maps._drawBg_draw;
-            core.maps._drawBg_draw = function (floorId, toDrawCtx, cacheCtx, config) {
-                return runMapRender(!!(config && config.onMap && isFace(floorId)), this,
-                    originalBgDraw, arguments);
-            };
-
-            var originalFgDraw = core.maps._drawFg_draw;
-            core.maps._drawFg_draw = function (floorId, toDrawCtx, cacheCtx, config) {
-                return runMapRender(!!(config && config.onMap && isFace(floorId)), this,
-                    originalFgDraw, arguments);
-            };
-
-            var originalDrawEvents = core.maps.drawEvents;
-            core.maps.drawEvents = function (floorId, blocks, config) {
+            // 全量绘制的唯一地图变换入口：先生成完整投影，再让引擎按普通
+            // 地图依次绘制 bg / event / fg。各绘制原语不再自行换算坐标。
+            var originalDrawMapAll = core.maps._drawMap_drawAll;
+            core.maps._drawMap_drawAll = function (floorId) {
                 floorId = floorId || core.status.floorId;
-                return runMapRender(isFace(floorId) && configDrawsOnMap(config), this,
-                    originalDrawEvents, arguments);
+                if (!hasMapOrientation(floorId)) return originalDrawMapAll.apply(this, arguments);
+                var projection = buildMapProjection(floorId);
+                core.removeGlobalAnimate();
+                core.deleteCanvas(function (name) { return name.indexOf("_bigImage_") === 0; });
+                return withMapProjection(projection, this, originalDrawMapAll, arguments);
             };
 
-            var canonicalDrawingCell = null;
-            var originalDrawBlockInfo = core.maps._drawBlockInfo;
-            core.maps._drawBlockInfo = function (blockInfo, x, y, ctx) {
-                if (!shouldMapBlockContext(ctx)) return originalDrawBlockInfo.apply(this, arguments);
-                var screen = logicalCellToScreen(x, y);
-                var previous = canonicalDrawingCell;
-                canonicalDrawingCell = { x: x, y: y };
-                try {
-                    return originalDrawBlockInfo.call(this, mapBlockInfoDirection(blockInfo), screen.x, screen.y, ctx);
-                } finally {
-                    canonicalDrawingCell = previous;
+            // setBlock、全局动画等增量入口同样接收一个投影后的标准 block。
+            // 全量投影中的 block 已有标记，不会发生二次映射。
+            var originalDrawBlock = core.maps.drawBlock;
+            core.maps.drawBlock = function (block, animate, ctx) {
+                if (!hasMapOrientation() || projectionRenderDepth > 0 || projectedOperationDepth > 0
+                    || !isMapDrawingContext(ctx)) {
+                    return originalDrawBlock.apply(this, arguments);
                 }
-            };
-
-            var originalDrawBlockInfoBgFg = core.maps._drawBlockInfo_bgfg;
-            core.maps._drawBlockInfo_bgfg = function (blockInfo, name, x, y, ctx) {
-                if (!shouldMapBlockContext(ctx)) return originalDrawBlockInfoBgFg.apply(this, arguments);
-                var screen = logicalCellToScreen(x, y);
-                var previous = canonicalDrawingCell;
-                canonicalDrawingCell = { x: x, y: y };
-                try {
-                    return originalDrawBlockInfoBgFg.call(this, mapBlockInfoDirection(blockInfo), name,
-                        screen.x, screen.y, ctx);
-                } finally {
-                    canonicalDrawingCell = previous;
+                // 动画队列里保存的已经是屏幕坐标；用操作深度告诉开关门
+                // 兼容层不要再把 _drawBlockInfo 的无 ctx 调用旋转一次。
+                if (isProjectedBlock(block)) {
+                    return runProjectedOperation(this, originalDrawBlock, arguments);
                 }
+                return runProjectedOperation(this, originalDrawBlock,
+                    [projectBlock(block, core.status.floorId), animate, ctx]);
             };
 
-            var originalShouldBlurFg = core.maps._drawBlockInfo_shouldBlurFg;
-            core.maps._drawBlockInfo_shouldBlurFg = function (x, y) {
-                if (canonicalDrawingCell) return originalShouldBlurFg.call(this,
-                    canonicalDrawingCell.x, canonicalDrawingCell.y);
-                return originalShouldBlurFg.apply(this, arguments);
+            var originalAddGlobalAnimate = core.maps.addGlobalAnimate;
+            core.maps.addGlobalAnimate = function (block) {
+                if (projectionRenderDepth > 0) {
+                    // bg/fg 图块由标准数组现场 initBlock，没有事件层投影块的
+                    // 标记；入动画队列前补上，避免下一帧再次旋转。
+                    if (block && !isProjectedBlock(block)) markProjectedBlock(block);
+                    return originalAddGlobalAnimate.apply(this, arguments);
+                }
+                if (!hasMapOrientation() || projectedOperationDepth > 0 || isProjectedBlock(block)) {
+                    return originalAddGlobalAnimate.apply(this, arguments);
+                }
+                return runProjectedOperation(this, originalAddGlobalAnimate,
+                    [projectBlock(block, core.status.floorId)]);
             };
 
-            // 引擎原版的删除逻辑会直接按逻辑像素清空 event/event2；在离散
-            // 朝向下会清错屏幕格。小地图固定 13x13，删除时完整重绘既可靠
-            // 又能同时清掉高图块、滤镜和显伤残影。
+            var originalRemoveGlobalAnimate = core.maps.removeGlobalAnimate;
+            core.maps.removeGlobalAnimate = function (x, y, name) {
+                if (x == null || y == null || !hasMapOrientation()
+                    || projectionRenderDepth > 0 || projectedOperationDepth > 0) {
+                    return originalRemoveGlobalAnimate.apply(this, arguments);
+                }
+                var screen = logicalCellToScreen(x, y);
+                return runProjectedOperation(this, originalRemoveGlobalAnimate, [screen.x, screen.y, name]);
+            };
+
+            // 原生删除会清除 event/event2、全局动画和大图块；给它投影 block
+            // 即可精确清掉一个屏幕格，无需用 redrawMap 掩盖错位。
             var originalRemoveBlockFromMap = core.maps._removeBlockFromMap;
             core.maps._removeBlockFromMap = function (floorId, block) {
-                if (!hasMapOrientation() || floorId !== core.status.floorId) {
+                if (!hasMapOrientation(floorId) || projectionRenderDepth > 0
+                    || projectedOperationDepth > 0 || isProjectedBlock(block)) {
                     return originalRemoveBlockFromMap.apply(this, arguments);
                 }
-                var screen = logicalCellToScreen(block.x, block.y);
-                core.removeGlobalAnimate(block.x, block.y);
-                [
-                    "_bigImage_header_" + block.x + "_" + block.y,
-                    "_bigImage_body_" + block.x + "_" + block.y,
-                    "_bigImage_header_" + screen.x + "_" + screen.y,
-                    "_bigImage_body_" + screen.x + "_" + screen.y
-                ].forEach(function (name) { core.deleteCanvas(name); });
-                core.redrawMap();
-                core.updateStatusBar();
+                return runProjectedOperation(this, originalRemoveBlockFromMap,
+                    [floorId, projectBlock(block, floorId)]);
             };
 
-            // Autotile 先按规范坐标拼好四个子块，再只平移到目标屏幕格；
-            // 不对拼好的纹理做 canvas.rotate。
-            var originalDrawAutotile = core.maps._drawAutotile;
-            core.maps._drawAutotile = function (ctx, mapArr, block, size, left, top, status, onMap) {
-                if (!onMap || !shouldMapBlockContext(ctx)) return originalDrawAutotile.apply(this, arguments);
-                var actual = mapContext(ctx);
-                if (!actual || !actual.save) return originalDrawAutotile.apply(this, arguments);
-                var screen = logicalCellToScreen(block.x, block.y);
-                actual.save();
-                actual.translate((screen.x - block.x) * size, (screen.y - block.y) * size);
-                try {
-                    return originalDrawAutotile.apply(this, arguments);
-                } finally {
-                    actual.restore();
-                }
+            // 开关门是引擎内唯一绕过 drawBlock、直接调用绘制原语的地图动画。
+            // 在这个遗留边界把参数变成标准屏幕坐标，原语本身仍保持原版。
+            var originalDrawBlockInfo = core.maps._drawBlockInfo;
+            core.maps._drawBlockInfo = function (blockInfo, x, y, ctx) {
+                if (ctx != null || !hasMapOrientation() || projectionRenderDepth > 0
+                    || projectedOperationDepth > 0) return originalDrawBlockInfo.apply(this, arguments);
+                var screen = logicalCellToScreen(x, y);
+                return runProjectedOperation(this, originalDrawBlockInfo,
+                    [projectBlockInfoDirection(blockInfo), screen.x, screen.y, ctx]);
             };
 
+            // Autotile 动画需要查询邻接数组；动画帧期间临时提供最新的投影
+            // 地图，仍由引擎原生算法拼接四个子块。
             var originalAutotileAnimate = core.maps._drawAutotileAnimate;
             core.maps._drawAutotileAnimate = function (block, animate) {
                 if (!hasMapOrientation()) return originalAutotileAnimate.apply(this, arguments);
-                var screen = logicalCellToScreen(block.x, block.y);
-                var cv = block.name ? core.canvas[block.name] : core.canvas.event;
-                var px = 32 * screen.x - 32 * core.bigmap.posX;
-                var py = 32 * screen.y - 32 * core.bigmap.posY;
-                cv.clearRect(px, py, 32, 32);
-                var alpha = null;
-                if (block.opacity != null) alpha = core.setAlpha(cv, block.opacity);
-                core.setFilter(cv, block.filter);
-                if (block.name) {
-                    if (block.name === "bg") core.drawImage("bg", core.material.groundCanvas.canvas, px, py);
-                    this._drawAutotile(cv, this._getBgFgMapArray(block.name), block, 32, 0, 0, animate, true);
-                } else {
-                    this._drawAutotile(cv, this.getMapArray(), block, 32, 0, 0, animate, true);
+                var projection = buildMapProjection(core.status.floorId);
+                var shown = isProjectedBlock(block) ? block : projectBlock(block, core.status.floorId);
+                return withMapProjection(projection, this, originalAutotileAnimate, [shown, animate]);
+            };
+
+            // 人物和跟随者也先形成标准屏幕坐标状态，再调用原版 drawHero。
+            var originalDrawHero = core.control.drawHero;
+            core.control.drawHero = function (status, offset, frame) {
+                if (!hasMapOrientation() || projectedOperationDepth > 0) {
+                    return originalDrawHero.apply(this, arguments);
                 }
-                core.setFilter(cv, null);
-                if (alpha != null) core.setAlpha(cv, alpha);
-            };
-
-            var originalFloorImage = core.maps._drawFloorImage;
-            core.maps._drawFloorImage = function (ctx, name, one, image, currStatus, onMap) {
-                if (!onMap || !hasMapOrientation()) return originalFloorImage.apply(this, arguments);
-                var screen = mapPixelKeepingCellOffset(one.x || 0, one.y || 0);
-                var mapped = Object.assign({}, one, { x: screen.x, y: screen.y });
-                return originalFloorImage.call(this, ctx, name, mapped, image, currStatus, onMap);
-            };
-
-            var originalFloorGif = core.maps._drawFloorImages_gif;
-            core.maps._drawFloorImages_gif = function (image, dx, dy) {
-                if (!hasMapOrientation()) return originalFloorGif.apply(this, arguments);
-                var screen = mapPixelKeepingCellOffset(dx, dy);
-                return originalFloorGif.call(this, image, screen.x, screen.y);
-            };
-
-            var originalHeroDrawObjects = core.control._drawHero_getDrawObjs;
-            core.control._drawHero_getDrawObjs = function (direction, x, y, status, offset) {
-                var blocks = originalHeroDrawObjects.apply(this, arguments);
-                if (!hasMapOrientation()) return blocks;
-                blocks.forEach(function (block) {
-                    var screen = mapMovingCellTopLeft(block.posx, block.posy);
-                    block.posx = screen.x;
-                    block.posy = screen.y;
-                    var logicalDirection = block.index === 0 ? direction :
-                        ((core.status.hero.followers[block.index - 1] || {}).direction);
-                    var screenDirection = CubeWorld.logicalToScreenDirection(logicalDirection, getViewQuarter());
-                    if (screenDirection && core.material.icons.hero[screenDirection]) {
-                        block.heroIcon = core.material.icons.hero[screenDirection];
-                    }
+                var hero = core.status.hero;
+                var logicalLoc = hero.loc;
+                var logicalFollowers = hero.followers;
+                var quarter = getViewQuarter();
+                var screen = logicalCellToScreen(logicalLoc.x, logicalLoc.y, quarter);
+                hero.loc = Object.assign({}, logicalLoc, {
+                    x: screen.x,
+                    y: screen.y,
+                    direction: CubeWorld.logicalToScreenDirection(logicalLoc.direction, quarter) || logicalLoc.direction
                 });
-                return blocks.sort(function (a, b) {
-                    return a.posy === b.posy ? b.index - a.index : a.posy - b.posy;
+                hero.followers = (logicalFollowers || []).map(function (one) {
+                    var cell = CubeWorld.logicalToScreenCell(one.x, one.y, currentFaceSize(), quarter);
+                    return Object.assign({}, one, {
+                        x: cell.x,
+                        y: cell.y,
+                        direction: CubeWorld.logicalToScreenDirection(one.direction, quarter) || one.direction
+                    });
                 });
+                var shownOffset = offset;
+                if (offset && typeof offset === "object") {
+                    var vector = projectVector(offset.x || 0, offset.y || 0, quarter);
+                    shownOffset = Object.assign({}, offset, vector);
+                }
+                projectedOperationDepth++;
+                try {
+                    return originalDrawHero.call(this, status, shownOffset, frame);
+                } finally {
+                    projectedOperationDepth--;
+                    hero.loc = logicalLoc;
+                    hero.followers = logicalFollowers;
+                }
             };
 
-            // 移动、跳跃、淡入淡出图块使用独立动态画布；只映射画布位置
-            // 并选择正常的屏幕方向帧，画布里的素材像素依旧不旋转。
+            // 移动、跳跃、淡入淡出图块使用屏幕坐标和屏幕方向调用原版
+            // 动态画布逻辑，素材像素本身始终不旋转。
             var originalMoveDetachedBlock = core.maps._moveDetachedBlock;
             core.maps._moveDetachedBlock = function (blockInfo, nowX, nowY, opacity, canvases) {
-                if (!hasMapOrientation()) return originalMoveDetachedBlock.apply(this, arguments);
+                if (!hasMapOrientation() || projectedOperationDepth > 0) {
+                    return originalMoveDetachedBlock.apply(this, arguments);
+                }
                 var screen = mapMovingCellTopLeft(nowX, nowY);
-                return originalMoveDetachedBlock.call(this, mapBlockInfoDirection(blockInfo),
-                    screen.x, screen.y, opacity, canvases);
+                return runProjectedOperation(this, originalMoveDetachedBlock,
+                    [projectBlockInfoDirection(blockInfo), screen.x, screen.y, opacity, canvases]);
             };
 
             var originalDamageDraw = core.control._drawDamage_draw;
@@ -679,8 +795,8 @@
                     var screen = mapPixelKeepingCellOffset(one.px, one.py);
                     return Object.assign({}, one, { px: screen.x, py: screen.y });
                 };
-                core.status.damage.data = data.map(mapEntry);
-                core.status.damage.extraData = extraData.map(mapEntry);
+                core.status.damage.data = (data || []).map(mapEntry);
+                core.status.damage.extraData = (extraData || []).map(mapEntry);
                 try {
                     return originalDamageDraw.apply(this, arguments);
                 } finally {
@@ -689,45 +805,39 @@
                 }
             };
 
-            var originalAnimateFrame = core.maps._drawAnimateFrame;
-            core.maps._drawAnimateFrame = function (name, animate, centerX, centerY, index) {
-                if (!hasMapOrientation() || name !== "animate") return originalAnimateFrame.apply(this, arguments);
-                var screen = mapPixelKeepingCellOffset(centerX, centerY);
-                return originalAnimateFrame.call(this, name, animate, screen.x, screen.y, index);
+            // 普通动画在创建时一次性投影中心点，后续帧完全走引擎原版。
+            var originalDrawAnimate = core.maps.drawAnimate;
+            core.maps.drawAnimate = function (name, x, y, alignWindow, callback) {
+                if (!hasMapOrientation() || projectedOperationDepth > 0 || x == null || y == null) {
+                    return originalDrawAnimate.apply(this, arguments);
+                }
+                var screen = logicalCellToScreen(x, y);
+                return runProjectedOperation(this, originalDrawAnimate,
+                    [name, screen.x, screen.y, alignWindow, callback]);
             };
 
             var originalDrawRoute = core.control._setAutomaticRoute_drawRoute;
             core.control._setAutomaticRoute_drawRoute = function (moveStep) {
                 if (!hasMapOrientation()) return originalDrawRoute.apply(this, arguments);
-                core.status.automaticRoute.offsetX = 0;
-                core.status.automaticRoute.offsetY = 0;
-                var ctx = core.createCanvas("route", 0, 0, core.__PIXELS__, core.__PIXELS__, 95);
-                core.clearMap(ctx);
-                ctx.fillStyle = "#bfbfbf";
-                ctx.strokeStyle = "#bfbfbf";
-                ctx.lineWidth = 8;
-                for (var m = 0; m < moveStep.length; m++) {
-                    var cell = logicalCellToScreen(moveStep[m].x, moveStep[m].y);
-                    if (m === moveStep.length - 1) {
-                        ctx.fillRect(cell.x * 32 + 10, cell.y * 32 + 10, 12, 12);
-                    } else {
-                        var cx = cell.x * 32 + 16, cy = cell.y * 32 + 16;
-                        var currDir = CubeWorld.logicalToScreenDirection(moveStep[m].direction, getViewQuarter());
-                        var nextDir = CubeWorld.logicalToScreenDirection(moveStep[m + 1].direction, getViewQuarter());
-                        ctx.beginPath();
-                        ctx.moveTo(cx - core.utils.scan[currDir].x * 11, cy - core.utils.scan[currDir].y * 11);
-                        ctx.lineTo(cx, cy);
-                        ctx.lineTo(cx + core.utils.scan[nextDir].x * 11, cy + core.utils.scan[nextDir].y * 11);
-                        ctx.stroke();
-                    }
-                }
+                var quarter = getViewQuarter();
+                var shown = moveStep.map(function (one) {
+                    var cell = CubeWorld.logicalToScreenCell(one.x, one.y, currentFaceSize(), quarter);
+                    return Object.assign({}, one, {
+                        x: cell.x,
+                        y: cell.y,
+                        direction: CubeWorld.logicalToScreenDirection(one.direction, quarter) || one.direction
+                    });
+                });
+                return runProjectedOperation(this, originalDrawRoute, [shown]);
             };
 
             var originalClearRouteNode = core.control.clearAutomaticRouteNode;
             core.control.clearAutomaticRouteNode = function (x, y) {
-                if (!hasMapOrientation()) return originalClearRouteNode.apply(this, arguments);
+                if (!hasMapOrientation() || projectedOperationDepth > 0) {
+                    return originalClearRouteNode.apply(this, arguments);
+                }
                 var screen = logicalCellToScreen(x, y);
-                core.clearMap("route", screen.x * 32 + 5, screen.y * 32 + 5, 27, 27);
+                return runProjectedOperation(this, originalClearRouteNode, [screen.x, screen.y]);
             };
         }
 
@@ -735,6 +845,10 @@
             if (!core.status || !core.status.played || !isFace(core.status.floorId) || !core.status.maps) {
                 return getViewQuarter();
             }
+            // 朝向切换后，旧队列中的 block 和大图块画布仍带有上一个屏幕
+            // 坐标；全量生成新投影前先丢弃这些显示缓存。
+            core.removeGlobalAnimate();
+            core.deleteCanvas(function (name) { return name.indexOf("_bigImage_") === 0; });
             core.redrawMap();
             core.drawHero();
             return getViewQuarter();
@@ -1163,6 +1277,7 @@
             openViewer: openViewer, closeViewer: closeViewer, toggleViewer: toggleViewer,
             refreshViewer: refreshViewer, setupUI: setupUI, showLoadWarnings: showLoadWarnings,
             setupMapPresentation: setupMapPresentation, getViewQuarter: getViewQuarter,
+            buildMapProjection: buildMapProjection,
             applyViewQuarter: applyViewQuarter, syncMapOrientation: syncMapOrientation,
             syncViewRotation: syncViewRotation, resetViewFromState: resetViewFromState,
             beforeChangeFloorView: beforeChangeFloorView, afterChangeFloorView: afterChangeFloorView,

@@ -144,41 +144,41 @@ test("跨旋转边后只重排地图格，素材保持正向且没有旋转动�
     expect(state.worldCanvasStyles.every((one) => one.rotationTerms.every((value) => Math.abs(value) < 1e-9))).toBe(true);
     expect(state.worldCanvasStyles.every((one) => one.transitionDuration === "0s")).toBe(true);
 
-    // 用四角颜色均不同的测试图块验证底层绘制原语：逻辑格 (4,2)
-    // 被放到屏幕格 (2,8)，而 32x32 像素顺序逐字节不变。
+    // 全量绘制先生成一张标准投影地图。逻辑格 (4,0) 的黄钥匙应进入
+    // 屏幕格 (0,8)，并由原生绘制完整复制素材像素，而不是旋转画布。
     const pixels = await page.evaluate(() => {
+        const block = core.getBlock(4, 0);
+        const blockInfo = core.getBlockInfo(block);
         const source = document.createElement("canvas");
         source.width = source.height = 32;
         const sourceCtx = source.getContext("2d");
-        sourceCtx.fillStyle = "#ff0000";
-        sourceCtx.fillRect(0, 0, 16, 16);
-        sourceCtx.fillStyle = "#00ff00";
-        sourceCtx.fillRect(16, 0, 16, 16);
-        sourceCtx.fillStyle = "#0000ff";
-        sourceCtx.fillRect(0, 16, 16, 16);
-        sourceCtx.fillStyle = "#ffff00";
-        sourceCtx.fillRect(16, 16, 16, 16);
+        sourceCtx.drawImage(blockInfo.image,
+            blockInfo.posX * 32, blockInfo.posY * blockInfo.height + blockInfo.height - 32,
+            32, 32, 0, 0, 32, 32);
 
-        core.clearMap("event");
-        core.maps._drawBlockInfo({
-            image: source, posX: 0, posY: 0, height: 32,
-            opacity: null, filter: null, faceIds: {}
-        }, 4, 2, "event");
-        const target = core.plugin.cubeWorld.logicalCellToScreen(4, 2);
+        const target = core.plugin.cubeWorld.logicalCellToScreen(4, 0);
+        const projection = core.plugin.cubeWorld.buildMapProjection();
         const actual = core.canvas.event.getImageData(target.x * 32, target.y * 32, 32, 32).data;
         const expected = sourceCtx.getImageData(0, 0, 32, 32).data;
-        const canonical = core.canvas.event.getImageData(4 * 32, 2 * 32, 32, 32).data;
+        const canonical = core.canvas.event.getImageData(4 * 32, 0, 32, 32).data;
         let equal = actual.length === expected.length;
         for (let i = 0; equal && i < actual.length; i++) equal = actual[i] === expected[i];
         const canonicalAlpha = Array.from(canonical).filter((_, index) => index % 4 === 3)
             .reduce((sum, value) => sum + value, 0);
-        core.redrawMap();
-        core.drawHero();
-        return { target, equal, canonicalAlpha };
+        return {
+            target, equal, canonicalAlpha,
+            projectionHasBlock: projection.blocks.some((one) =>
+                one.x === target.x && one.y === target.y && one.id === block.id)
+        };
     });
-    expect(pixels).toEqual({ target: { x: 2, y: 8 }, equal: true, canonicalAlpha: 0 });
+    expect(pixels).toEqual({
+        target: { x: 0, y: 8 }, equal: true, canonicalAlpha: 0, projectionHasBlock: true
+    });
 
     // 地图布局处于四分之三转朝向；继续按屏幕“右”应换算成逻辑“下”。
+    await expect.poll(() => page.evaluate(() =>
+        !core.status.lockControl && !core.status.event.id
+    )).toBe(true);
     await page.keyboard.press("ArrowRight");
     await expect.poll(() => page.evaluate(() => core.getHeroLoc("y"))).toBe(1);
     state = await page.evaluate(() => ({
@@ -220,6 +220,100 @@ test("跨旋转边后只重排地图格，素材保持正向且没有旋转动�
     });
     expect(removedItem.before).toBeGreaterThan(0);
     expect(removedItem.after).toBe(0);
+});
+
+test("旋转朝向下本面战斗结束后不会残留怪物、显伤或动画虚影", async ({ page }) => {
+    await bootGame(page);
+    await changeFloor(page, "MT4", { x: 12, y: 9, direction: "right" });
+    await page.evaluate(() => {
+        core.extractBlocks("MT3");
+        core.removeBlockByIndexes(core.status.maps.MT3.blocks.map((_, index) => index), "MT3");
+        core.setHeroLoc("direction", "right", true);
+    });
+    await moveOnce(page);
+
+    await page.evaluate(() => {
+        core.status.hero.atk = 9999;
+        core.status.hero.def = 9999;
+        core.setBlock(201, 3, 1, "MT3");
+        core.setHeroLoc("direction", "down", true);
+        core.updateStatusBar();
+    });
+    await expect.poll(() => page.evaluate(() => {
+        const cell = core.plugin.cubeWorld.logicalCellToScreen(3, 1);
+        return core.status.globalAnimateObjs.some((block) => block.x === cell.x && block.y === cell.y);
+    })).toBe(true);
+    const placement = await page.evaluate(() => {
+        const cell = core.plugin.cubeWorld.logicalCellToScreen(3, 1);
+        const alpha = (x, y) => Array.from(core.canvas.event.getImageData(
+            x * 32, y * 32, 32, 32
+        ).data).filter((_, index) => index % 4 === 3).reduce((sum, value) => sum + value, 0);
+        return {
+            cell,
+            projected: alpha(cell.x, cell.y),
+            canonical: alpha(3, 1),
+            total: Array.from(core.canvas.event.getImageData(
+                0, 0, core.__PIXELS__, core.__PIXELS__
+            ).data).filter((_, index) => index % 4 === 3).reduce((sum, value) => sum + value, 0),
+            animateCells: core.status.globalAnimateObjs.map((block) => ({ x: block.x, y: block.y }))
+        };
+    });
+    expect(placement.cell).toEqual({ x: 1, y: 9 });
+    expect(placement.projected).toBeGreaterThan(0);
+    expect(placement.canonical).toBe(0);
+    expect(placement.total).toBe(placement.projected);
+    expect(placement.animateCells).toEqual([{ x: 1, y: 9 }]);
+
+    await page.evaluate(() => {
+        window.__cubeOriginalRedrawMap = core.maps.redrawMap;
+        window.__cubeRedrawCount = 0;
+        core.maps.redrawMap = function () {
+            window.__cubeRedrawCount++;
+            return window.__cubeOriginalRedrawMap.apply(this, arguments);
+        };
+    });
+    await page.evaluate(() => new Promise((resolve) => {
+        core.battle("greenSlime", 3, 1, false, resolve, "MT3");
+    }));
+    await expect.poll(() => page.evaluate(() => core.getBlockId(3, 1, "MT3"))).toBeNull();
+    await expect.poll(() => page.evaluate(() => (core.status.animateObjs || []).length)).toBe(0);
+    await expect.poll(() => page.evaluate(() => !core.status.lockControl && !core.status.event.id)).toBe(true);
+
+    const residue = await page.evaluate(() => {
+        const cell = core.plugin.cubeWorld.logicalCellToScreen(3, 1);
+        const redraws = window.__cubeRedrawCount;
+        core.maps.redrawMap = window.__cubeOriginalRedrawMap;
+        delete window.__cubeOriginalRedrawMap;
+        delete window.__cubeRedrawCount;
+        const alpha = (id, x, y, width, height) => {
+            const data = core.canvas[id].getImageData(x, y, width, height).data;
+            let sum = 0;
+            for (let i = 3; i < data.length; i += 4) sum += data[i];
+            return sum;
+        };
+        return {
+            quarter: core.plugin.cubeWorld.getViewQuarter(), redraws,
+            cell,
+            event: alpha("event", cell.x * 32, cell.y * 32, 32, 32),
+            event2: alpha("event2", cell.x * 32, Math.max(0, cell.y * 32 - 32), 32, 64),
+            canonicalEvent: alpha("event", 3 * 32, 1 * 32, 32, 32),
+            canonicalEvent2: alpha("event2", 3 * 32, 0, 32, 64),
+            totalEvent: alpha("event", 0, 0, core.__PIXELS__, core.__PIXELS__),
+            totalEvent2: alpha("event2", 0, 0, core.__PIXELS__, core.__PIXELS__),
+            damage: alpha("damage", cell.x * 32, cell.y * 32, 32, 32),
+            animate: alpha("animate", 0, 0, core.__PIXELS__, core.__PIXELS__),
+            globalAtProjected: core.status.globalAnimateObjs.filter((block) =>
+                block.x === cell.x && block.y === cell.y).length,
+            globalAtCanonical: core.status.globalAnimateObjs.filter((block) =>
+                block.x === 3 && block.y === 1).length
+        };
+    });
+    expect(residue).toEqual({
+        quarter: 3, redraws: 0, cell: { x: 1, y: 9 },
+        event: 0, event2: 0, canonicalEvent: 0, canonicalEvent2: 0,
+        totalEvent: 0, totalEvent2: 0, damage: 0, animate: 0,
+        globalAtProjected: 0, globalAtCanonical: 0
+    });
 });
 
 test("跨面怪物胜利后进入目标格，块级元数据与远程战斗楼层不会错位", async ({ page }) => {
