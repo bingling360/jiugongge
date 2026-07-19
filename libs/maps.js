@@ -2694,6 +2694,117 @@ maps.prototype._deleteDetachedBlock = function (canvases) {
     core.deleteCanvas(canvases.damageCanvas);
 }
 
+////// 使用显式楼层坐标搬运图块数据 //////
+maps.prototype._isValidBlockPoint = function (point) {
+    var floor = point && core.floors[point.floorId];
+    var statusMaps = (core.status || {}).maps || {};
+    return !!floor && !!statusMaps[point.floorId]
+        && typeof point.x === 'number' && point.x === Math.floor(point.x)
+        && typeof point.y === 'number' && point.y === Math.floor(point.y)
+        && point.x >= 0 && point.x < floor.width && point.y >= 0 && point.y < floor.height;
+}
+
+maps.prototype._getBlockPlacementNumber = function (snapshot, direction) {
+    if (!snapshot || !snapshot.event) return 0;
+    var targetId = snapshot.event.id;
+    var faceIds = snapshot.event.faceIds;
+    if (faceIds && direction && faceIds[direction]) targetId = faceIds[direction];
+    var number = core.getNumberById(targetId);
+    if (!(number > 0) && targetId === snapshot.event.id && snapshot.id > 0) number = snapshot.id;
+    return number;
+}
+
+maps.prototype._copyBlockSnapshotMetadata = function (snapshot, placed, direction) {
+    Object.keys(snapshot).forEach(function (key) {
+        if (key === 'x' || key === 'y' || key === 'id') return;
+        placed[key] = core.clone(snapshot[key]);
+    });
+    var faceIds = placed.event && placed.event.faceIds;
+    if (faceIds && direction && faceIds[direction]) {
+        placed.event.id = faceIds[direction];
+        placed.id = core.maps._getBlockPlacementNumber(snapshot, direction);
+    }
+}
+
+maps.prototype._placeBlockSnapshot = function (snapshot, point, direction) {
+    var number = this._getBlockPlacementNumber(snapshot, direction);
+    if (!(number > 0)) return null;
+    core.setBlock(number, point.x, point.y, point.floorId);
+    var placed = core.getBlock(point.x, point.y, point.floorId, false);
+    if (!placed) return null;
+    this._copyBlockSnapshotMetadata(snapshot, placed, direction);
+    placed.x = point.x;
+    placed.y = point.y;
+    core.setBlockOpacity(snapshot.opacity == null ? null : snapshot.opacity,
+        point.x, point.y, point.floorId);
+    core.setBlockFilter(snapshot.filter == null ? null : snapshot.filter,
+        point.x, point.y, point.floorId);
+    return placed;
+}
+
+maps.prototype._invalidateBlockPointCaches = function (source, destination) {
+    if (!core.status.mapBlockObjs) return;
+    core.status.mapBlockObjs[source.floorId] = null;
+    core.status.mapBlockObjs[destination.floorId] = null;
+}
+
+maps.prototype.relocateBlock = function (source, destination) {
+    if (!this._isValidBlockPoint(source) || !this._isValidBlockPoint(destination)) return false;
+    if (core.getBlock(destination.x, destination.y, destination.floorId, true)) return false;
+    var block = core.getBlock(source.x, source.y, source.floorId, false);
+    if (!block || block.disable || !block.event) return false;
+    var snapshot = core.clone(block);
+    if (!(this._getBlockPlacementNumber(snapshot, destination.direction) > 0)) return false;
+    try {
+        core.removeBlock(source.x, source.y, source.floorId);
+        core.setBlockOpacity(null, source.x, source.y, source.floorId);
+        core.setBlockFilter(null, source.x, source.y, source.floorId);
+        if (!this._placeBlockSnapshot(snapshot, destination, destination.direction)) throw new Error('图块搬运失败');
+        core.moveEnemyOnPoint(source.x, source.y, destination.x, destination.y,
+            source.floorId, true, destination.floorId);
+        this._invalidateBlockPointCaches(source, destination);
+        return true;
+    } catch (error) {
+        try {
+            core.removeBlock(destination.x, destination.y, destination.floorId);
+            this._placeBlockSnapshot(snapshot, source, null);
+        } catch (rollbackError) { }
+        this._invalidateBlockPointCaches(source, destination);
+        return false;
+    }
+}
+
+maps.prototype.exchangeBlocks = function (source, destination, reverseDirection) {
+    if (!this._isValidBlockPoint(source) || !this._isValidBlockPoint(destination)) return false;
+    if (source.floorId === destination.floorId && source.x === destination.x && source.y === destination.y) return false;
+    var sourceBlock = core.getBlock(source.x, source.y, source.floorId, false);
+    var destinationBlock = core.getBlock(destination.x, destination.y, destination.floorId, false);
+    if (!sourceBlock || !destinationBlock || sourceBlock.disable || destinationBlock.disable) return false;
+    var sourceSnapshot = core.clone(sourceBlock), destinationSnapshot = core.clone(destinationBlock);
+    if (!(this._getBlockPlacementNumber(sourceSnapshot, destination.direction) > 0)
+        || !(this._getBlockPlacementNumber(destinationSnapshot, reverseDirection) > 0)) return false;
+    try {
+        core.removeBlock(source.x, source.y, source.floorId);
+        core.removeBlock(destination.x, destination.y, destination.floorId);
+        var displaced = this._placeBlockSnapshot(destinationSnapshot, source, reverseDirection);
+        var moved = this._placeBlockSnapshot(sourceSnapshot, destination, destination.direction);
+        if (!displaced || !moved) throw new Error('图块换位失败');
+        core.exchangeEnemyOnPoint(source.x, source.y, destination.x, destination.y,
+            source.floorId, true, destination.floorId);
+        this._invalidateBlockPointCaches(source, destination);
+        return true;
+    } catch (error) {
+        try {
+            core.removeBlock(source.x, source.y, source.floorId);
+            core.removeBlock(destination.x, destination.y, destination.floorId);
+            this._placeBlockSnapshot(sourceSnapshot, source, null);
+            this._placeBlockSnapshot(destinationSnapshot, destination, null);
+        } catch (rollbackError) { }
+        this._invalidateBlockPointCaches(source, destination);
+        return false;
+    }
+}
+
 maps.prototype._getAndRemoveBlock = function (x, y) {
     var block = core.getBlock(x, y);
     if (block == null) return null;

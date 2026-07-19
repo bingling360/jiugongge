@@ -684,11 +684,12 @@ control.prototype.moveAction = function (callback) {
     this._moveAction_moving(callback);
 }
 
-control.prototype._moveAction_noPass = function (canMove, callback) {
+control.prototype._moveAction_noPass = function (canMove, callback, target) {
     core.status.route.push(core.getHeroLoc('direction'));
     core.status.automaticRoute.moveStepBeforeStop = [];
     core.status.automaticRoute.lastDirection = core.getHeroLoc('direction');
-    if (canMove) core.trigger(core.nextX(), core.nextY());
+    target = target || { x: core.nextX(), y: core.nextY(), floorId: core.status.floorId };
+    if (canMove) core.trigger(target.x, target.y, null, target.floorId);
     core.drawHero();
 
     if (core.status.automaticRoute.moveStepBeforeStop.length == 0) {
@@ -1298,6 +1299,18 @@ control.prototype.getChaseType = function () {
 control.prototype._checkBlock_chase = function (chase) {
     if (!chase || chase.length === 0) return [];
     var actions = [];
+    // 立方体表面的追猎记录已经由拓扑层算出显式源点和目标点。仍交给
+    // 原生追猎入口统一调度，只把无法由二维 steps 表达的坐标交给通用
+    // 数据移动器；目标图块的可穿越语义不再由跨面插件另写一份。
+    const explicitRecords = chase.filter((one) => one && one.source && one.destination);
+    explicitRecords.forEach((record) => {
+        actions.push({
+            "type": "function",
+            "function": "function(){core.control._executeChaseMove(" + JSON.stringify(record) + ");}"
+        });
+    });
+    chase = chase.filter((one) => !one || !one.source || !one.destination);
+    if (chase.length === 0) return actions;
     const { x: hx, y: hy } = core.status.hero.loc;
     const reverseDir = { 'up': 'down', 'down': 'up', 'left': 'right', 'right': 'left' };
     chase = chase.sort((a, b) => {
@@ -1343,6 +1356,24 @@ control.prototype._checkBlock_chase = function (chase) {
 
     if (actions.length > 0) actions.push({ "type": "waitAsync" });
     return actions;
+}
+
+// 使用显式楼层坐标执行一次追猎。面内和跨面记录共享本函数；拓扑层只
+// 负责提供目标点与跨边后的方向，不再决定目标图块的玩法语义。
+control.prototype._executeChaseMove = function (record) {
+    if (!record || !record.source || !record.destination) return false;
+    const source = record.source, destination = record.destination;
+    if (destination.floorId === core.status.floorId
+        && destination.x === core.getHeroLoc('x') && destination.y === core.getHeroLoc('y')) return false;
+    const sourceBlock = core.getBlock(source.x, source.y, source.floorId, false);
+    if (!sourceBlock || !sourceBlock.event || sourceBlock.disable) return false;
+    if (record.id && sourceBlock.event.id !== record.id) return false;
+
+    const destinationBlock = core.getBlock(destination.x, destination.y, destination.floorId, true);
+    if (!destinationBlock) return core.maps.relocateBlock(source, destination);
+    if (destinationBlock.disable || !destinationBlock.event || destinationBlock.event.data) return false;
+    if (!core.getChaseType().includes(destinationBlock.event.cls || '')) return false;
+    return core.maps.exchangeBlocks(source, destination, record.reverseDirection);
 }
 
 ////// 更新全地图显伤 //////

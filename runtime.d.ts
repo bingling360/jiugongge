@@ -1105,7 +1105,10 @@ interface events {
     resetEnemyOnPoint(x: number, y: number, floorId?: string): void
 
     /** 将某个点已经设置的敌人属性移动到其他点 */
-    moveEnemyOnPoint(fromX: number, fromY: number, toX: number, toY: number, floorId?: string): void
+    moveEnemyOnPoint(fromX: number, fromY: number, toX: number, toY: number, floorId?: string, norefresh?: boolean, toFloorId?: string): void
+
+    /** 将两个点的敌人单点属性交换；toFloorId 不填时视为同层 */
+    exchangeEnemyOnPoint(fromX: number, fromY: number, toX: number, toY: number, floorId?: string, norefresh?: boolean, toFloorId?: string): void
 
     /**
      * 设置一项楼层属性并刷新状态栏
@@ -2032,6 +2035,12 @@ interface maps {
      * @param callback 移动或淡出后的回调函数，可选
      */
     moveBlock(x: number, y: number, steps: step[], time?: number, keep?: boolean, callback?: () => void): void
+
+    /** 使用显式楼层坐标搬运一个图块，并完整保留块级数据 */
+    relocateBlock(source: { floorId: string, x: number, y: number }, destination: { floorId: string, x: number, y: number, direction?: string }): boolean
+
+    /** 使用显式楼层坐标交换两个图块，并完整保留块级数据 */
+    exchangeBlocks(source: { floorId: string, x: number, y: number }, destination: { floorId: string, x: number, y: number, direction?: string }, reverseDirection?: string): boolean
 
     /**
      * 跳跃图块；从V2.7开始不再有音效

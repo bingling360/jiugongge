@@ -3128,35 +3128,43 @@ events.prototype.resetEnemyOnPoint = function (x, y, floorId, norefresh) {
 }
 
 ////// 将某个点上已经设置的怪物属性移动到其他点 //////
-events.prototype.moveEnemyOnPoint = function (fromX, fromY, toX, toY, floorId, norefresh) {
+events.prototype.moveEnemyOnPoint = function (fromX, fromY, toX, toY, floorId, norefresh, toFloorId) {
     floorId = floorId || core.status.floorId;
+    toFloorId = toFloorId || floorId;
     if (((flags.enemyOnPoint || {})[floorId] || {})[fromX + "," + fromY]) {
-        flags.enemyOnPoint[floorId][toX + "," + toY] = flags.enemyOnPoint[floorId][fromX + "," + fromY];
+        flags.enemyOnPoint[toFloorId] = flags.enemyOnPoint[toFloorId] || {};
+        flags.enemyOnPoint[toFloorId][toX + "," + toY] = flags.enemyOnPoint[floorId][fromX + "," + fromY];
         delete flags.enemyOnPoint[floorId][fromX + "," + fromY];
         if (!norefresh) core.updateStatusBar();
     }
 }
 
 ////// 将两个点的怪物属性交换 ////// 
-events.prototype.exchangeEnemyOnPoint = function (fromX, fromY, toX, toY, floorId, norefresh) {
+events.prototype.exchangeEnemyOnPoint = function (fromX, fromY, toX, toY, floorId, norefresh, toFloorId) {
     floorId = floorId || core.status.floorId;
+    toFloorId = toFloorId || floorId;
     const spos = fromX + "," + fromY,
         aimpos = toX + "," + toY;
     if (!flags.enemyOnPoint) return;
-    if (!flags.enemyOnPoint.hasOwnProperty(floorId)) return;
-
-    const enemyOnFloor = flags.enemyOnPoint[floorId];
+    const sourceEnemyOnFloor = flags.enemyOnPoint[floorId] || {};
+    const targetEnemyOnFloor = flags.enemyOnPoint[toFloorId] || {};
     let fromInfo, toInfo;
-    if (enemyOnFloor.hasOwnProperty(spos)) fromInfo = core.clone(enemyOnFloor[spos]);
-    if (enemyOnFloor.hasOwnProperty(aimpos)) toInfo = core.clone(enemyOnFloor[aimpos]);
+    if (sourceEnemyOnFloor.hasOwnProperty(spos)) fromInfo = core.clone(sourceEnemyOnFloor[spos]);
+    if (targetEnemyOnFloor.hasOwnProperty(aimpos)) toInfo = core.clone(targetEnemyOnFloor[aimpos]);
 
     // 删除旧位置信息
-    if (fromInfo) delete enemyOnFloor[spos];
-    if (toInfo) delete enemyOnFloor[aimpos];
+    if (fromInfo) delete sourceEnemyOnFloor[spos];
+    if (toInfo) delete targetEnemyOnFloor[aimpos];
 
     // 设置新位置信息
-    if (fromInfo) enemyOnFloor[aimpos] = fromInfo;
-    if (toInfo) enemyOnFloor[spos] = toInfo;
+    if (fromInfo) {
+        flags.enemyOnPoint[toFloorId] = flags.enemyOnPoint[toFloorId] || {};
+        flags.enemyOnPoint[toFloorId][aimpos] = fromInfo;
+    }
+    if (toInfo) {
+        flags.enemyOnPoint[floorId] = flags.enemyOnPoint[floorId] || {};
+        flags.enemyOnPoint[floorId][spos] = toInfo;
+    }
 
     if (!norefresh) core.updateStatusBar();
 }

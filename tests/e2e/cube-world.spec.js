@@ -205,6 +205,9 @@ test("旋转边上的远程门保留钥匙语义，第二次输入才真正跨�
     });
 
     await moveOnce(page);
+    await expect.poll(() => page.evaluate(() => ({
+        key: core.itemCount("yellowKey"), target: core.getBlockId(3, 0, "MT3")
+    }))).toEqual({ key: 4, target: null });
     let state = await page.evaluate(() => ({
         floorId: core.status.floorId,
         loc: core.clone(core.status.hero.loc),
@@ -223,6 +226,84 @@ test("旋转边上的远程门保留钥匙语义，第二次输入才真正跨�
     expect(state.floorId).toBe("MT3");
     expect(state.loc).toMatchObject({ x: 3, y: 0, direction: "down" });
     expect(state.route).toBe("right");
+});
+
+test("跨面普通墙复用面内碰触语义，不会误走开门管线", async ({ page }) => {
+    await bootGame(page);
+    await changeFloor(page, "MT4", { x: 10, y: 9, direction: "right" });
+    const mapExample = await page.evaluate(() => {
+        // 对照组：本层右侧是一堵普通黄墙。
+        core.setBlock(1, 11, 9, "MT4");
+        // 实验组：MT4(12,9) 向右跨面后的落点 MT3(3,0) 也是同一种墙。
+        core.setBlock(1, 3, 0, "MT3");
+        const describe = (x, y, floorId) => {
+            const block = core.getBlock(x, y, floorId);
+            return {
+                floorId, x, y, number: block.id, id: block.event.id,
+                trigger: block.event.trigger || null,
+                hasDoorInfo: !!block.event.doorInfo
+            };
+        };
+
+        window.__crossWallOpenDoorCalls = [];
+        window.__crossWallOriginalOpenDoor = core.openDoor;
+        core.openDoor = function (x, y, needKey, callback, floorId) {
+            window.__crossWallOpenDoorCalls.push({ x, y, needKey, floorId });
+            return window.__crossWallOriginalOpenDoor.apply(this, arguments);
+        };
+        core.setHeroLoc("direction", "right", true);
+        return {
+            sameFloorWall: describe(11, 9, "MT4"),
+            crossFloorWall: describe(3, 0, "MT3")
+        };
+    });
+    expect(mapExample).toEqual({
+        sameFloorWall: {
+            floorId: "MT4", x: 11, y: 9, number: 1, id: "yellowWall",
+            trigger: null, hasDoorInfo: true
+        },
+        crossFloorWall: {
+            floorId: "MT3", x: 3, y: 0, number: 1, id: "yellowWall",
+            trigger: null, hasDoorInfo: true
+        }
+    });
+
+    await moveOnce(page);
+    const sameFloor = await page.evaluate(() => ({
+        floorId: core.status.floorId,
+        loc: core.clone(core.status.hero.loc),
+        target: core.getBlockId(11, 9, "MT4"),
+        openDoorCalls: core.clone(window.__crossWallOpenDoorCalls)
+    }));
+    expect(sameFloor).toEqual({
+        floorId: "MT4",
+        loc: { x: 10, y: 9, direction: "right" },
+        target: "yellowWall",
+        openDoorCalls: []
+    });
+
+    await changeFloor(page, "MT4", { x: 12, y: 9, direction: "right" });
+    await page.evaluate(() => core.setHeroLoc("direction", "right", true));
+    await moveOnce(page);
+    const crossFloor = await page.evaluate(() => {
+        const state = {
+            floorId: core.status.floorId,
+            loc: core.clone(core.status.hero.loc),
+            target: core.getBlockId(3, 0, "MT3"),
+            openDoorCalls: core.clone(window.__crossWallOpenDoorCalls)
+        };
+        core.openDoor = window.__crossWallOriginalOpenDoor;
+        delete window.__crossWallOriginalOpenDoor;
+        delete window.__crossWallOpenDoorCalls;
+        return state;
+    });
+
+    expect(crossFloor).toEqual({
+        floorId: "MT4",
+        loc: { x: 12, y: 9, direction: "right" },
+        target: "yellowWall",
+        openDoorCalls: []
+    });
 });
 
 test("跨旋转边后只重排地图格，素材保持正向且没有旋转动画", async ({ page }) => {
@@ -635,7 +716,7 @@ test("旋转朝向下本面战斗结束后不会残留怪物、显伤或动画�
     )).toBe(true);
 });
 
-test("跨面怪物胜利后进入目标格，块级元数据与远程战斗楼层不会错位", async ({ page }) => {
+test("跨面怪物复用面内战斗语义，胜利后下一次输入才进入目标格", async ({ page }) => {
     await bootGame(page);
     await changeFloor(page, "MT0", { x: 12, y: 6, direction: "right" });
     const metadata = await page.evaluate(() => {
@@ -671,16 +752,22 @@ test("跨面怪物胜利后进入目标格，块级元数据与远程战斗楼�
         orientedMoved: true, orientedId: "npc1", orientedNumber: 134, orientedMapNumber: 134
     });
     await moveOnce(page);
-    const state = await page.evaluate(() => ({
+    await expect.poll(() => page.evaluate(() => core.getBlockId(0, 6, "MT3"))).toBeNull();
+    let state = await page.evaluate(() => ({
         floorId: core.status.floorId,
         loc: core.clone(core.status.hero.loc),
         target: core.getBlockId(0, 6, "MT3"),
         route: core.status.route.slice(-1)[0]
     }));
-    expect(state.floorId).toBe("MT3");
-    expect(state.loc).toMatchObject({ x: 0, y: 6, direction: "right" });
+    expect(state.floorId).toBe("MT0");
+    expect(state.loc).toMatchObject({ x: 12, y: 6, direction: "right" });
     expect(state.target).toBeNull();
     expect(state.route).toBe("right");
+
+    await moveOnce(page);
+    state = await page.evaluate(() => ({ floorId: core.status.floorId, loc: core.clone(core.status.hero.loc) }));
+    expect(state.floorId).toBe("MT3");
+    expect(state.loc).toMatchObject({ x: 0, y: 6, direction: "right" });
 });
 
 test("跨面道具、NPC 与破墙镐遵循本层同等语义", async ({ page }) => {
@@ -711,8 +798,16 @@ test("跨面道具、NPC 与破墙镐遵循本层同等语义", async ({ page })
         core.setHeroLoc("direction", "right", true);
     });
     await moveOnce(page);
+    await expect.poll(() => page.evaluate(() => ({
+        flag: core.getFlag("remoteNpc"), block: core.getBlockId(3, 0, "MT3"),
+        stable: !core.status.event.id && !core.status.lockControl
+    }))).toEqual({ flag: true, block: null, stable: true });
     state = await page.evaluate(() => ({ floorId: core.status.floorId, flag: core.getFlag("remoteNpc"), block: core.getBlockId(3, 0, "MT3") }));
-    expect(state).toEqual({ floorId: "MT3", flag: true, block: null });
+    expect(state).toEqual({ floorId: "MT4", flag: true, block: null });
+    await moveOnce(page);
+    state = await page.evaluate(() => ({ floorId: core.status.floorId, loc: core.clone(core.status.hero.loc) }));
+    expect(state.floorId).toBe("MT3");
+    expect(state.loc).toMatchObject({ x: 3, y: 0, direction: "down" });
 
     await changeFloor(page, "MT4", { x: 12, y: 9, direction: "right" });
     const canUsePickaxe = await page.evaluate(() => {
@@ -747,6 +842,34 @@ test("跨面道具、NPC 与破墙镐遵循本层同等语义", async ({ page })
         icePickaxe: core.itemCount("icePickaxe"), route: core.status.route.slice(-1)[0]
     }));
     expect(state).toEqual({ floorId: "MT4", block: null, icePickaxe: 0, route: "item:icePickaxe" });
+});
+
+test("跨面落点道具在到达事件队列中仍由原生触发且只结算一次", async ({ page }) => {
+    await bootGame(page);
+    await changeFloor(page, "MT4", { x: 12, y: 9, direction: "right" });
+    const atkBefore = await page.evaluate(() => {
+        core.floors.MT3.eachArrive = [
+            { type: "sleep", time: 80 },
+            {
+                type: "function",
+                "function": "function(){core.setFlag('crossArrivalCount',core.getFlag('crossArrivalCount',0)+1);}"
+            }
+        ];
+        core.setBlock(27, 3, 0, "MT3");
+        core.setHeroLoc("direction", "right", true);
+        return core.status.hero.atk;
+    });
+
+    await moveOnce(page);
+    await expect.poll(() => page.evaluate(() => ({
+        floorId: core.status.floorId,
+        arrivalCount: core.getFlag("crossArrivalCount", 0),
+        atk: core.status.hero.atk,
+        block: core.getBlockId(3, 0, "MT3"),
+        stable: !core.status.event.id && !core.status.lockControl
+    }))).toEqual({
+        floorId: "MT3", arrivalCount: 1, atk: atkBefore + 4, block: null, stable: true
+    });
 });
 
 test("激光与追猎在旋转边后继续沿真实表面直线，目标格不重复计伤", async ({ page }) => {
@@ -795,6 +918,8 @@ test("追猎怪与普通物品在同面和跨面安全换位，双方块数据�
         const sameRecord = (core.plugin.cubeWorld.buildCheckBlock("MT0").chase["6,4"] || [])
             .find((one) => one.source.floorId === "MT0" && one.source.x === 4 && one.source.y === 4);
         const sameDestination = sameRecord && core.clone(sameRecord.destination);
+        const sameUsesSharedAction = core.control._checkBlock_chase([sameRecord]).some((action) =>
+            String(action.function || "").includes("core.control._executeChaseMove"));
         const sameMoved = core.plugin.cubeWorld.executeMonsterMove(sameRecord);
         const sameSource = core.getBlock(4, 4, "MT0", false);
         const sameTarget = core.getBlock(5, 4, "MT0", false);
@@ -816,13 +941,15 @@ test("追猎怪与普通物品在同面和跨面安全换位，双方块数据�
         const crossRecord = (core.plugin.cubeWorld.buildCheckBlock("MT4").chase["1,1"] || [])
             .find((one) => one.source.floorId === "MT2" && one.source.x === 1 && one.source.y === 0);
         const crossDestination = crossRecord && core.clone(crossRecord.destination);
+        const crossUsesSharedAction = core.control._checkBlock_chase([crossRecord]).some((action) =>
+            String(action.function || "").includes("core.control._executeChaseMove"));
         const crossMoved = core.plugin.cubeWorld.executeMonsterMove(crossRecord);
         const crossSource = core.getBlock(1, 0, "MT2", false);
         const crossTarget = core.getBlock(0, 1, "MT4", false);
 
         return {
             same: {
-                destination: sameDestination, moved: sameMoved,
+                destination: sameDestination, usesSharedAction: sameUsesSharedAction, moved: sameMoved,
                 sourceId: sameSource && sameSource.event.id,
                 sourceOpacity: sameSource && sameSource.opacity,
                 sourceMarker: sameSource && sameSource.swapMarker,
@@ -831,7 +958,7 @@ test("追猎怪与普通物品在同面和跨面安全换位，双方块数据�
                 targetMarker: sameTarget && sameTarget.chaseMarker
             },
             cross: {
-                destination: crossDestination, moved: crossMoved,
+                destination: crossDestination, usesSharedAction: crossUsesSharedAction, moved: crossMoved,
                 sourceId: crossSource && crossSource.event.id,
                 sourceNumber: core.getMapNumber(1, 0, "MT2", true),
                 sourceOpacity: crossSource && crossSource.opacity,
@@ -853,12 +980,12 @@ test("追猎怪与普通物品在同面和跨面安全换位，双方块数据�
     });
 
     expect(result.same).toEqual({
-        destination: { floorId: "MT0", x: 5, y: 4, direction: "right" }, moved: true,
+        destination: { floorId: "MT0", x: 5, y: 4, direction: "right" }, usesSharedAction: true, moved: true,
         sourceId: "yellowKey", sourceOpacity: 0.37, sourceMarker: "same-item",
         targetId: "keiskeiFairy", targetOpacity: 0.61, targetMarker: "same-monster"
     });
     expect(result.cross).toEqual({
-        destination: { floorId: "MT4", x: 0, y: 1, direction: "right" }, moved: true,
+        destination: { floorId: "MT4", x: 0, y: 1, direction: "right" }, usesSharedAction: true, moved: true,
         sourceId: "yellowKey", sourceNumber: 21, sourceOpacity: 0.46, sourceOpacityFlag: 0.46,
         sourceFilter: { blur: 1 }, sourceFilterFlag: { blur: 1 }, sourceMarker: "cross-item",
         sourceEvent: [{ type: "tip", text: "跨面换位后保留" }],
@@ -868,7 +995,7 @@ test("追猎怪与普通物品在同面和跨面安全换位，双方块数据�
     });
 });
 
-test("带事件数据的物品阻挡追猎，阻击怪仍只能退到空格", async ({ page }) => {
+test("追猎和阻击拒绝事件块、隐藏块、过期记录与非法目标", async ({ page }) => {
     await bootGame(page);
     const result = await page.evaluate(() => {
         [[2, 2], [3, 2], [4, 2]].forEach(([x, y]) => core.removeBlock(x, y, "MT0"));
@@ -907,6 +1034,35 @@ test("带事件数据的物品阻挡追猎，阻击怪仍只能退到空格", as
         });
         const hiddenTarget = core.getBlock(11, 10, "MT0", true);
 
+        [[6, 11], [7, 11]].forEach(([x, y]) => core.removeBlock(x, y, "MT0"));
+        core.setBlock(326, 6, 11, "MT0");
+        const staleRepulse = {
+            cube: true, kind: "repulse", id: "tulipFairy",
+            source: { floorId: "MT0", x: 6, y: 11 },
+            destination: { floorId: "MT0", x: 7, y: 11, direction: "right" }
+        };
+        core.removeBlock(6, 11, "MT0");
+        core.setBlock(21, 6, 11, "MT0");
+        const staleRepulseMoved = core.plugin.cubeWorld.executeMonsterMove(staleRepulse);
+
+        const hero = {
+            floorId: core.status.floorId,
+            x: core.getHeroLoc("x"), y: core.getHeroLoc("y")
+        };
+        const guardSource = hero.x === 0 && hero.y === 0
+            ? { floorId: "MT0", x: 1, y: 0 }
+            : { floorId: "MT0", x: 0, y: 0 };
+        core.removeBlock(hero.x, hero.y, hero.floorId);
+        core.removeBlock(guardSource.x, guardSource.y, guardSource.floorId);
+        core.setBlock(325, guardSource.x, guardSource.y, guardSource.floorId);
+        const intoHeroMoved = core.control._executeChaseMove({
+            kind: "chase", id: "keiskeiFairy", source: guardSource,
+            destination: { floorId: hero.floorId, x: hero.x, y: hero.y, direction: "right" }
+        });
+        const samePointExchanged = core.maps.exchangeBlocks(guardSource, guardSource, "left");
+        const fractionalMoved = core.maps.relocateBlock(guardSource,
+            { floorId: "MT0", x: 1.5, y: 1, direction: "right" });
+
         return {
             chase: {
                 atItem: atItem.length, behindItem: behindItem.length, forgedMoved: forgedChaseMoved,
@@ -920,6 +1076,14 @@ test("带事件数据的物品阻挡追猎，阻击怪仍只能退到空格", as
                 moved: hiddenMoved, sourceId: core.getBlockId(10, 10, "MT0"),
                 targetId: hiddenTarget && hiddenTarget.event.id,
                 targetDisabled: hiddenTarget && hiddenTarget.disable
+            },
+            guards: {
+                staleRepulseMoved,
+                staleSourceId: core.getBlockId(6, 11, "MT0"),
+                staleTargetId: core.getBlockId(7, 11, "MT0"),
+                intoHeroMoved, samePointExchanged, fractionalMoved,
+                guardSourceId: core.getBlockId(guardSource.x, guardSource.y, guardSource.floorId),
+                heroTargetId: core.getBlockId(hero.x, hero.y, hero.floorId)
             }
         };
     });
@@ -935,6 +1099,11 @@ test("带事件数据的物品阻挡追猎，阻击怪仍只能退到空格", as
     expect(result.hidden).toEqual({
         moved: false, sourceId: "keiskeiFairy",
         targetId: "yellowKey", targetDisabled: true
+    });
+    expect(result.guards).toEqual({
+        staleRepulseMoved: false, staleSourceId: "yellowKey", staleTargetId: null,
+        intoHeroMoved: false, samePointExchanged: false, fractionalMoved: false,
+        guardSourceId: "keiskeiFairy", heroTargetId: null
     });
 });
 

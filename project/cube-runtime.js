@@ -15,8 +15,6 @@
             sizes[floorId] = { width: floor.width || 13, height: floor.height || 13 };
         });
         var geometry = CubeWorld.createGeometry({ sizes: sizes });
-        var pendingCrosses = {};
-        var pendingCrossId = 0;
         var viewerOverlay = null;
         var viewerFrame = null;
         var viewerOpenId = 0;
@@ -246,124 +244,9 @@
             return info;
         }
 
-        function copyBlockMetadata(snapshot, placed, destinationDirection) {
-            Object.keys(snapshot).forEach(function (key) {
-                // id 是当前朝向对应的图块数字，应保留 setBlock 生成的目标值；
-                // 其余块级脚本、透明度、滤镜和自定义字段完整复制。
-                if (key === "x" || key === "y" || key === "id") return;
-                placed[key] = core.clone(snapshot[key]);
-            });
-            var faceIds = placed.event && placed.event.faceIds;
-            if (faceIds && destinationDirection && faceIds[destinationDirection]) {
-                placed.event.id = faceIds[destinationDirection];
-                placed.id = getPlacementNumber(snapshot, destinationDirection);
-            }
-        }
-
-        function getPlacementNumber(snapshot, destinationDirection) {
-            if (!snapshot || !snapshot.event) return 0;
-            var targetId = snapshot.event.id;
-            var faceIds = snapshot.event.faceIds;
-            if (faceIds && destinationDirection && faceIds[destinationDirection]) {
-                targetId = faceIds[destinationDirection];
-            }
-            var number = core.getNumberById(targetId);
-            if (!(number > 0) && targetId === snapshot.event.id && snapshot.id > 0) number = snapshot.id;
-            return number;
-        }
-
-        function placeBlockSnapshot(snapshot, destination, destinationDirection) {
-            var number = getPlacementNumber(snapshot, destinationDirection);
-            if (!(number > 0)) return null;
-            core.setBlock(number, destination.x, destination.y, destination.floorId);
-            var placed = core.getBlock(destination.x, destination.y, destination.floorId, false);
-            if (!placed) return null;
-            copyBlockMetadata(snapshot, placed, destinationDirection);
-            placed.x = destination.x;
-            placed.y = destination.y;
-            // opacity/filter 同时存于坐标 flags；只改 block 对象会在存读档后回弹。
-            if (core.setBlockOpacity) {
-                core.setBlockOpacity(snapshot.opacity == null ? null : snapshot.opacity,
-                    destination.x, destination.y, destination.floorId);
-            }
-            if (core.setBlockFilter) {
-                core.setBlockFilter(snapshot.filter == null ? null : snapshot.filter,
-                    destination.x, destination.y, destination.floorId);
-            }
-            return placed;
-        }
-
-        function invalidateBlockCaches(source, destination) {
-            if (!core.status.mapBlockObjs) return;
-            core.status.mapBlockObjs[source.floorId] = null;
-            core.status.mapBlockObjs[destination.floorId] = null;
-        }
-
-        function getEnemyOnPointStore() {
-            var hero = core.status && core.status.hero;
-            if (!hero || !hero.flags) return null;
-            if (!hero.flags.enemyOnPoint) hero.flags.enemyOnPoint = {};
-            return hero.flags.enemyOnPoint;
-        }
-
-        function getEnemyPointInfo(store, point) {
-            return core.clone(((store[point.floorId] || {})[point.x + "," + point.y]) || null);
-        }
-
-        function setEnemyPointInfo(store, point, value) {
-            var key = point.x + "," + point.y;
-            if (store[point.floorId]) delete store[point.floorId][key];
-            if (value == null) return;
-            if (!store[point.floorId]) store[point.floorId] = {};
-            store[point.floorId][key] = core.clone(value);
-        }
-
-        function moveEnemyPointInfo(source, destination) {
-            var store = getEnemyOnPointStore();
-            if (!store) return;
-            var sourceInfo = getEnemyPointInfo(store, source);
-            setEnemyPointInfo(store, source, null);
-            setEnemyPointInfo(store, destination, sourceInfo);
-        }
-
-        function exchangeEnemyPointInfo(source, destination, destinationIsEnemy) {
-            var store = getEnemyOnPointStore();
-            if (!store) return;
-            var sourceInfo = getEnemyPointInfo(store, source);
-            var destinationInfo = destinationIsEnemy ? getEnemyPointInfo(store, destination) : null;
-            setEnemyPointInfo(store, source, destinationInfo);
-            setEnemyPointInfo(store, destination, sourceInfo);
-        }
-
         function relocateBlock(source, destination) {
             if (!source || !destination || !isFace(source.floorId) || !isFace(destination.floorId)) return false;
-            if (!isMonsterDestinationEmpty(destination)) return false;
-            var block = core.getBlock(source.x, source.y, source.floorId, false);
-            if (!block || block.disable || !block.event) return false;
-            var snapshot = core.clone(block);
-            if (!(getPlacementNumber(snapshot, destination.direction) > 0)) return false;
-            try {
-                core.removeBlock(source.x, source.y, source.floorId);
-                if (!placeBlockSnapshot(snapshot, destination, destination.direction)) throw new Error("图块搬运失败");
-                moveEnemyPointInfo(source, destination);
-                invalidateBlockCaches(source, destination);
-                return true;
-            } catch (error) {
-                // 正常注册图块不会走到这里；仍尽力恢复源图块，避免失败时静默丢失。
-                try {
-                    core.removeBlock(destination.x, destination.y, destination.floorId);
-                    placeBlockSnapshot(snapshot, source, null);
-                } catch (rollbackError) { }
-                invalidateBlockCaches(source, destination);
-                return false;
-            }
-        }
-
-        function isChaseDestinationPassable(point) {
-            var block = getBlock(point);
-            if (!block) return true;
-            if (block.disable || !block.event || block.event.data) return false;
-            return core.control.getChaseType().indexOf(block.event.cls || "") >= 0;
+            return core.maps.relocateBlock(source, destination);
         }
 
         function getReverseDestinationDirection(source, destination) {
@@ -372,48 +255,6 @@
             var reverse = geometry.step(state(destination.floorId, destination.x, destination.y, direction), direction);
             if (reverse.floorId !== source.floorId || reverse.x !== source.x || reverse.y !== source.y) return null;
             return reverse.direction;
-        }
-
-        function moveChasingBlock(source, destination) {
-            if (!source || !destination || !isFace(source.floorId) || !isFace(destination.floorId)) return false;
-            if (source.floorId === destination.floorId && source.x === destination.x && source.y === destination.y) return false;
-            var sourceBlock = getBlock(source);
-            if (!sourceBlock || sourceBlock.disable || !sourceBlock.event) return false;
-            var destinationBlock = getBlock(destination);
-            if (!destinationBlock) return relocateBlock(source, destination);
-            if (!isChaseDestinationPassable(destination)) return false;
-
-            var sourceSnapshot = core.clone(sourceBlock);
-            var destinationSnapshot = core.clone(destinationBlock);
-            var destinationIsEnemy = isEnemyBlock(destinationBlock);
-            var displacedDirection = destinationIsEnemy
-                ? getReverseDestinationDirection(source, destination) : null;
-            if (destinationIsEnemy && !displacedDirection) return false;
-            if (!(getPlacementNumber(sourceSnapshot, destination.direction) > 0) ||
-                !(getPlacementNumber(destinationSnapshot, displacedDirection) > 0)) return false;
-
-            // 事件层不支持两个图块长期占据同一格。先同时移除，再将追猎怪和
-            // 可穿越图块换位；这样物品不会被 setBlock 覆盖删除。
-            try {
-                core.removeBlock(source.x, source.y, source.floorId);
-                core.removeBlock(destination.x, destination.y, destination.floorId);
-                var displaced = placeBlockSnapshot(destinationSnapshot, source, displacedDirection);
-                var chasing = placeBlockSnapshot(sourceSnapshot, destination, destination.direction);
-                if (!displaced || !chasing) throw new Error("追猎换位失败");
-                exchangeEnemyPointInfo(source, destination, destinationIsEnemy);
-                invalidateBlockCaches(source, destination);
-                return true;
-            } catch (error) {
-                // 两个落点均已知合法；若底层放置仍失败，则清理半成品并回滚。
-                try {
-                    core.removeBlock(source.x, source.y, source.floorId);
-                    core.removeBlock(destination.x, destination.y, destination.floorId);
-                    placeBlockSnapshot(sourceSnapshot, source, null);
-                    placeBlockSnapshot(destinationSnapshot, destination, null);
-                } catch (rollbackError) { }
-                invalidateBlockCaches(source, destination);
-                return false;
-            }
         }
 
         function refreshDamage() {
@@ -425,12 +266,17 @@
         }
 
         function executeMonsterMove(record) {
-            if (!record || !record.destination) return false;
-            var sourceBlock = core.getBlock(record.source.x, record.source.y, record.source.floorId, false);
-            if (!sourceBlock || !sourceBlock.event || (record.id && sourceBlock.event.id !== record.id)) return false;
-            var moved = record.kind === "chase"
-                ? moveChasingBlock(record.source, record.destination)
-                : relocateBlock(record.source, record.destination);
+            if (!record || !record.source || !record.destination) return false;
+            var normalized = core.clone(record);
+            var sourceBlock = getBlock(normalized.source);
+            if (!sourceBlock || !sourceBlock.event
+                || (normalized.id && sourceBlock.event.id !== normalized.id)) return false;
+            if (normalized.kind === "chase" && normalized.reverseDirection == null) {
+                normalized.reverseDirection = getReverseDestinationDirection(normalized.source, normalized.destination);
+            }
+            var moved = normalized.kind === "chase"
+                ? core.control._executeChaseMove(normalized)
+                : relocateBlock(normalized.source, normalized.destination);
             if (moved) refreshDamage();
             return moved;
         }
@@ -449,6 +295,11 @@
                 var minimum = group[0].distance;
                 var nearest = group.filter(function (one) { return one.distance === minimum; });
                 if (nearest.length === 1) selected.push(nearest[0]);
+            });
+            selected = selected.map(function (record) {
+                var normalized = core.clone(record);
+                normalized.reverseDirection = getReverseDestinationDirection(normalized.source, normalized.destination);
+                return normalized;
             });
             return selected.sort(function (a, b) {
                 return a.distance - b.distance || sourceKey(a.source).localeCompare(sourceKey(b.source));
@@ -1430,16 +1281,6 @@
             return true;
         }
 
-        function recordAttempt(controller, direction, callback) {
-            core.status.route.push(direction);
-            core.status.automaticRoute.moveStepBeforeStop = [];
-            core.status.automaticRoute.lastDirection = direction;
-            core.drawHero();
-            core.clearContinueAutomaticRoute();
-            core.stopAutomaticRoute();
-            if (callback) callback();
-        }
-
         function crossHero(target, direction, recordRoute, callback) {
             if (recordRoute) core.status.route.push(direction);
             core.status.holdingKeys = [];
@@ -1449,120 +1290,26 @@
             prepareCrossView(direction, target.direction);
             core.changeFloor(target.floorId, null, { x: target.x, y: target.y, direction: target.direction }, 0, function () {
                 core.moveOneStep(function () {
-                    // `trigger` 在已有自定义事件时会先异步回调、再把系统事件
-                    // 排入动作队列。跨层转场正好会放大这个时序差，导致落点
-                    // 道具有时留在脚下。以落点的实时状态兜底一次，已处理过
-                    // 的道具已经被移除，因此不会重复结算。
-                    var landing = getBlock(target);
-                    if (landing && landing.event && landing.event.trigger === "getItem") {
-                        core.getItem(landing.event.id, 1, target.x, target.y, false, function () {
-                            core.checkRouteFolding();
-                            if (callback) callback();
-                        }, target.floorId);
-                        return;
-                    }
                     core.checkRouteFolding();
                     if (callback) callback();
                 });
             });
         }
 
-        function finishPendingCross(id) {
-            var pending = pendingCrosses[id];
-            if (!pending) {
-                if (core.status.event.id === "action") core.doAction();
-                return;
-            }
-            delete pendingCrosses[id];
-            var resume = pending.callback;
-            if (pending.resumeAction) {
-                resume = function () {
-                    // 先把挂起的动作队列继续到稳定点，再兑现本次移动的回调。
-                    // 否则 Playwright、自动寻路和按键释放都会永久等待。
-                    core.doAction();
-                    if (pending.callback) pending.callback();
-                };
-            }
-            if (!canEnterCrossTarget(pending.target)) {
-                if (resume) resume();
-                return;
-            }
-            crossHero(pending.target, pending.direction, false, resume);
-        }
-
-        function schedulePendingCross(target, direction, callback) {
-            var id = ++pendingCrossId;
-            var inAction = core.status.event.id === "action";
-            pendingCrosses[id] = { target: clonePoint(target), direction: direction, callback: callback, resumeAction: inAction };
-            if (inAction) {
-                core.insertAction({
-                    type: "function", async: true,
-                    "function": "function(){core.plugin.cubeWorld.finishPendingCross(" + id + ");}"
-                }, null, null, null, true);
-            } else setTimeout(function () { finishPendingCross(id); }, 1);
-        }
-
-        function queueEventCross(block, target, direction, callback) {
-            var id = ++pendingCrossId;
-            pendingCrosses[id] = {
-                target: clonePoint(target), direction: direction,
-                callback: callback, resumeAction: true
-            };
-            var actions = core.clone(block.event.event);
-            if (!(actions instanceof Array)) actions = [actions];
-            actions.push({
-                type: "function", async: true,
-                "function": "function(){core.plugin.cubeWorld.finishPendingCross(" + id + ");}"
-            });
-            // 把续行明确放在远程事件的末尾；不能依赖 trigger 对事件数组的
-            // 早回调，否则续行与 NPC 的移除动作会发生竞态。
-            core.insertAction(actions, target.x, target.y, null, false, target.floorId);
-        }
-
         function handleCrossInteraction(controller, from, target, direction, callback) {
             if (!canCrossTerrain(from, target, direction)) {
-                recordAttempt(controller, direction, callback);
-                return true;
+                return controller._moveAction_noPass(false, callback);
             }
             var block = getBlock(target);
-            if (!block || !block.event || !block.event.noPass) {
-                if (!canEnterCrossTarget(target)) recordAttempt(controller, direction, callback);
-                else crossHero(target, direction, true, callback);
-                return true;
+            if (block && block.event && block.event.noPass) {
+                // 推箱子需要同一二维地图上的下一格，不能跨边直接套用；除此
+                // 之外全部交给原生碰触事件分发，门、墙、怪物和 NPC 不再分类。
+                var pushBox = block.event.id === "box" || block.event.id === "boxed"
+                    || block.event.trigger === "pushBox";
+                return controller._moveAction_noPass(!pushBox, callback, target);
             }
-            if (block.event.doorInfo) {
-                recordAttempt(controller, direction);
-                core.openDoor(target.x, target.y, true, callback, target.floorId);
-                return true;
-            }
-            if (block.event.id === "box" || block.event.id === "boxed" || block.event.trigger === "pushBox") {
-                recordAttempt(controller, direction, callback);
-                return true;
-            }
-            if (block.event.trigger === "battle" || isEnemyBlock(block)) {
-                recordAttempt(controller, direction);
-                if (!core.enemys.canBattle(block.event.id, target.x, target.y, target.floorId)) {
-                    core.battle(block.event.id, target.x, target.y, false, callback, target.floorId);
-                    return true;
-                }
-                core.battle(block.event.id, target.x, target.y, false, function () {
-                    schedulePendingCross(target, direction, callback);
-                }, target.floorId);
-                return true;
-            }
-            if (block.event.event && !block.event.script) {
-                recordAttempt(controller, direction);
-                queueEventCross(block, target, direction, callback);
-                return true;
-            }
-            if ((block.event.trigger && block.event.trigger !== "null") || block.event.event) {
-                recordAttempt(controller, direction);
-                core.trigger(target.x, target.y, function () {
-                    schedulePendingCross(target, direction, callback);
-                }, target.floorId);
-                return true;
-            }
-            recordAttempt(controller, direction, callback);
+            if (!canEnterCrossTarget(target)) return controller._moveAction_noPass(false, callback);
+            crossHero(target, direction, true, callback);
             return true;
         }
 
@@ -1639,7 +1386,7 @@
             geometry: geometry, faces: CubeWorld.FACE_IDS.slice(), titles: CubeWorld.FACE_TITLES,
             isFace: isFace, buildCheckBlock: buildCheckBlock, relocateBlock: relocateBlock,
             executeMonsterMove: executeMonsterMove, selectChases: selectChases, battleAt: battleAt,
-            finishPendingCross: finishPendingCross, applyCubeAura: applyCubeAura,
+            applyCubeAura: applyCubeAura,
             refreshDamage: refreshDamage, openDoorsWhenClear: openDoorsWhenClear,
             openViewer: openViewer, closeViewer: closeViewer, toggleViewer: toggleViewer,
             refreshViewer: refreshViewer, setupUI: setupUI, showLoadWarnings: showLoadWarnings,
@@ -1719,10 +1466,16 @@
         var originalChase = control.prototype._checkBlock_chase;
         control.prototype._checkBlock_chase = function (records) {
             records = records || [];
-            var actions = originalChase.call(this, records.filter(function (one) { return !one || !one.cube; }));
-            selectChases(records).forEach(function (record) {
-                actions.push({ type: "function", "function": "function(){core.plugin.cubeWorld.executeMonsterMove(" + JSON.stringify(record) + ");}" });
-            });
+            var commonRecords = records.filter(function (one) { return !one || !one.cube; });
+            var selected = selectChases(records);
+            core.push(commonRecords, selected);
+            var actions = originalChase.call(this, commonRecords);
+            if (selected.length) {
+                actions.push({
+                    type: "function",
+                    "function": "function(){core.plugin.cubeWorld.refreshDamage();}"
+                });
+            }
             return actions;
         };
 
