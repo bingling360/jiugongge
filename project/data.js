@@ -551,6 +551,30 @@ var data_a1e2fb4a_e986_4524_b0da_9b7ba7c0874d =
 				"type": "setValue",
 				"name": "item:blueKey",
 				"value": "1"
+			},
+			{
+				"type": "choices",
+				"text": "是否开启跨面视图旋转？开启后跨面移动时画面会随之旋转。",
+				"choices": [
+					{
+						"text": "开启",
+						"action": [
+							{
+								"type": "function",
+								"function": "function(){\nif (core.plugin.cubeWorld && core.plugin.cubeWorld.setCrossViewRotationEnabled) {\n\t\tcore.plugin.cubeWorld.setCrossViewRotationEnabled(true);\n\t}\n}"
+							}
+						]
+					},
+					{
+						"text": "不开启",
+						"action": [
+							{
+								"type": "function",
+								"function": "function(){\nif (core.plugin.cubeWorld && core.plugin.cubeWorld.setCrossViewRotationEnabled) {\n\t\tcore.plugin.cubeWorld.setCrossViewRotationEnabled(false);\n\t}\n}"
+							}
+						]
+					}
+				]
 			}
 		],
 		"shops": [

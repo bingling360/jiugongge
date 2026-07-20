@@ -9363,6 +9363,13 @@ var plugins_bb40132b_638b_4a9f_b028_d3fe47acc8d1 =
 				else core.drawClosedMap(flags.__onLeft__);
 			}
 			var hx = core.status.hero.loc.x;
+			// 立方体面在跨面视图旋转（quarter≠0）后，英雄逻辑坐标与屏幕左右
+			// 不再对应，需用 logicalCellToScreen 还原成屏幕格坐标，否则小地图
+			// 箭头（mapArrow）会判定到错误一侧 / 翻转错乱。
+			if (core.plugin.cubeWorld && core.plugin.cubeWorld.isFace(core.status.floorId)) {
+				hx = core.plugin.cubeWorld.logicalCellToScreen(
+					core.status.hero.loc.x, core.status.hero.loc.y).x;
+			}
 			var opened = flags.minimap;
 			var onLeft = hx >= Math.ceil(core.__SIZE__ / 3 * 2);
 			fromUser = fromUser || false; // 开关小地图相关

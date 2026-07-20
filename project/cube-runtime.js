@@ -436,10 +436,19 @@
             else core.onkeyUp(event);
         }
 
+        // 跨面视图旋转开关：默认关闭（OFF）。开启后进入新面时画面会随
+        // 跨越的边旋转。开关状态由道具 redWand（名为“跨面旋转开关”）的
+        // 使用效果切换（见 project/items.js）。
+        var CROSS_VIEW_ROTATION_KEY = "__cubeCrossViewRotation__";
+        function isCrossViewRotationEnabled() {
+            var v = core.getLocalStorage(CROSS_VIEW_ROTATION_KEY);
+            return v === undefined ? false : !!v;
+        }
+
         function getViewQuarter() {
-            // 已去除跨面视图旋转：无论存档中残留的朝向标记为何，画面始终
-            // 以规范朝向（quarter=0）显示，所有坐标/方向换算保持恒等。
-            return 0;
+            if (!core.status || !core.status.hero) return 0;
+            if (!isCrossViewRotationEnabled()) return 0;
+            return CubeWorld.normalizeQuarter(core.getFlag(VIEW_QUARTER_FLAG, 0));
         }
 
         function storeViewQuarter(quarter) {
@@ -1091,9 +1100,13 @@
         }
 
         function prepareCrossView(sourceDirection, targetDirection) {
-            // 已去除跨面视图旋转：进入新面后不再随跨越的边旋转画面，始终
-            // 回到规范朝向。
-            pendingViewQuarter = 0;
+            if (!isCrossViewRotationEnabled()) {
+                pendingViewQuarter = 0;
+                return pendingViewQuarter;
+            }
+            pendingViewQuarter = CubeWorld.viewQuarterAfterCross(
+                getViewQuarter(), sourceDirection, targetDirection
+            );
             return pendingViewQuarter;
         }
 
@@ -1478,7 +1491,11 @@
             screenToLogicalDirection: function (direction) {
                 return CubeWorld.screenToLogicalDirection(direction, getViewQuarter());
             },
-            screenLocationToLogical: screenLocationToLogical
+            screenLocationToLogical: screenLocationToLogical,
+            isCrossViewRotationEnabled: isCrossViewRotationEnabled,
+            setCrossViewRotationEnabled: function (enabled) {
+                core.setLocalStorage(CROSS_VIEW_ROTATION_KEY, !!enabled);
+            }
         };
         plugin.cubeWorld = runtime;
 

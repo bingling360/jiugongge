@@ -475,6 +475,22 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.25;
 container.appendChild(renderer.domElement);
 
+// WebGL 上下文丢失/恢复兜底：
+// 当反复开关查看器（每次打开都新建一个 WebGL 上下文）把浏览器活跃上下文数顶到上限时，
+// 当前可见查看器的上下文可能被回收，导致右侧 3D 立方体画布变空白；
+// 而左侧 2D 缩略图是独立 2D canvas，不受影响，所以表现为“缩略图还在、3D 没了”。
+// 这里监听丢失/恢复：丢失时阻止默认行为以允许后续恢复；恢复后重建贴图并重启渲染循环，
+// 避免“模型消失后不回来”。（若没有此兜底，丢失即永久空白。）
+renderer.domElement.addEventListener("webglcontextlost", function (e) {
+  e.preventDefault();
+  if (animationId != null) { cancelAnimationFrame(animationId); animationId = null; }
+}, false);
+renderer.domElement.addEventListener("webglcontextrestored", function () {
+  refreshAllFaces();
+  if (currentFace) drawThumbnail(currentFace);
+  if (animationId == null) animate();
+}, false);
+
 var controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
@@ -735,6 +751,11 @@ window.addEventListener("message", function (e) {
   if (data.action === "stopCubeMap" && animationId != null) {
     cancelAnimationFrame(animationId);
     animationId = null;
+    // 真正释放 GPU 上的 WebGL 上下文。否则关闭后旧文档仍占用一个上下文，
+    // 而每次打开查看器（cube-runtime.openViewer 换 URL 强制重载）又新建一个，
+    // 反复开关会逐步耗尽浏览器上限，最终把当前可见查看器的上下文强制回收、
+    // 导致 3D 模型消失。forceContextLoss 可及时把旧上下文交还给系统。
+    try { renderer.forceContextLoss(); } catch (err) {}
   }
 });
 

@@ -69,46 +69,7 @@ var items_296f5d02_12fd_4166_a7c1_b5e830c9ee3a =
 		"text": "可以进行加点",
 		"itemEffect": null,
 		"itemEffectTip": "，全属性提升",
-		"useItemEvent": [
-			{
-				"type": "choices",
-				"choices": [
-					{
-						"text": "攻击+1",
-						"action": [
-							{
-								"type": "setValue",
-								"name": "status:atk",
-								"operator": "+=",
-								"value": "1"
-							}
-						]
-					},
-					{
-						"text": "防御+2",
-						"action": [
-							{
-								"type": "setValue",
-								"name": "status:def",
-								"operator": "+=",
-								"value": "2"
-							}
-						]
-					},
-					{
-						"text": "生命+200",
-						"action": [
-							{
-								"type": "setValue",
-								"name": "status:hp",
-								"operator": "+=",
-								"value": "200"
-							}
-						]
-					}
-				]
-			}
-		],
+		"useItemEvent": null,
 		"canUseItemEffect": "true",
 		"itemEffectEvent": {
 			"sound": "gem.mp3",
@@ -600,11 +561,11 @@ var items_296f5d02_12fd_4166_a7c1_b5e830c9ee3a =
 		"useItemEffect": "core.plugin.openSetting();"
 	},
 	"redWand": {
-		"cls": "items",
-		"name": "新物品",
-		"text": "null",
+		"cls": "constants",
+		"name": "跨面旋转开关",
+		"text": "点击使用可开启/关闭跨面视图旋转。",
 		"hideInReplay": false,
-		"useItemEffect": null,
+		"useItemEffect": "(function () {\n\tif (!core.plugin.cubeWorld || !core.plugin.cubeWorld.setCrossViewRotationEnabled) {\n\t\tcore.drawTip('当前场景不支持该功能', 'redWand');\n\t\tcore.addItem('redWand', 1);\n\t\treturn;\n\t}\n\tvar enabled = !core.plugin.cubeWorld.isCrossViewRotationEnabled();\n\tcore.plugin.cubeWorld.setCrossViewRotationEnabled(enabled);\n\tcore.drawTip('跨面旋转：' + (enabled ? '开' : '关'), 'redWand');\n\tcore.addItem('redWand', 1);\n})();",
 		"canUseItemEffect": "true"
 	},
 	"cyanWand": {
