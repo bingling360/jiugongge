@@ -14,6 +14,8 @@ var data_a1e2fb4a_e986_4524_b0da_9b7ba7c0874d =
 			"bear.png",
 			"bg.jpg",
 			"dragon.png",
+			"gura_maid.png",
+			"gura_maid_hd.png",
 			"hero.png",
 			"mousewheel.png",
 			"winskin.png"
@@ -124,12 +126,12 @@ var data_a1e2fb4a_e986_4524_b0da_9b7ba7c0874d =
 		]
 	},
 	"firstData": {
-		"title": "立方体世界",
-		"name": "cube-world",
-		"version": "Ver 3.0.0",
+		"title": "立方体1：正方体",
+		"name": "lifangti",
+		"version": "Ver 2.8.2",
 		"floorId": "MT0",
 		"hero": {
-			"image": "hero.png",
+			"image": "gura_maid.png",
 			"animate": false,
 			"name": "阳光",
 			"lv": 1,
@@ -149,10 +151,7 @@ var data_a1e2fb4a_e986_4524_b0da_9b7ba7c0874d =
 					"setting": 1,
 					"postman": 1
 				},
-				"tools": {
-					"yellowKey": 2,
-					"blueKey": 1
-				},
+				"tools": {},
 				"equips": {}
 			},
 			"loc": {
@@ -518,76 +517,63 @@ var data_a1e2fb4a_e986_4524_b0da_9b7ba7c0874d =
 		],
 		"startText": [
 			{
+				"type": "comment",
+				"text": "初始剧情"
+			},
+			{
+				"type": "comment",
+				"text": "血瓶宝石数据默认显示"
+			},
+			{
 				"type": "setValue",
 				"name": "flag:itemDetail",
 				"value": "true"
 			},
 			{
-				"type": "text",
-				"text": "\t[向导,sign]欢迎来到立方体世界。这里的六张地图不是六层塔，而是同一个立方体的六个表面。"
+				"type": "comment",
+				"text": "如果不需要显示弹幕，可去除comment相关事件块"
 			},
 			{
-				"type": "text",
-				"text": "走到任意边缘后继续前进，就会跨到相邻表面；跨越转角时只会瞬时重排地图格，素材保持正向，勇士、激光和追猎的逻辑方向则随表面改变。"
+				"type": "setValue",
+				"name": "flag:comment",
+				"value": "true"
 			},
 			{
-				"type": "text",
-				"text": "按 C 打开六面总览，拖动旋转、滚轮缩放；再次按 C 或 Esc 关闭。"
+				"type": "function",
+				"function": "function(){\n// 默认读取弹幕数据\nif (core.hasFlag('comment') && !core.isReplaying()) {\n\tnew Promise(res => {\n\t\t\tsetTimeout(res, 1000);\n\t\t})\n\t\t.then(value => {\n\t\t\treturn new Promise(res => {\n\t\t\t\tcore.plugin.getComment();\n\t\t\t\tsetTimeout(res, 1000);\n\t\t\t})\n\t\t})\n\t\t.then(value => {\n\t\t\tcore.plugin.drawCommentSign();\n\t\t})\n}\n}"
 			},
 			{
-				"type": "tip",
-				"text": "从正面出发，探索完整的六面世界。"
+				"type": "setValue",
+				"name": "item:yellowKey",
+				"value": "2"
+			},
+			{
+				"type": "setValue",
+				"name": "item:blueKey",
+				"value": "1"
 			}
 		],
 		"shops": [
 			{
-				"id": "moneyShop",
-				"text": "\t[贪婪之神,moneyShop]勇敢的武士啊, 给我${20+2*flag:shop1}金币就可以：",
+				"id": "shop1",
+				"text": "\t[贪婪之神,moneyShop]勇敢的武士啊, 花${30+5*flag:shop1}金币就可以强化自身（每次购买后价格+5）：",
 				"textInList": "1F金币商店",
 				"mustEnable": false,
 				"disablePreview": false,
 				"choices": [
 					{
-						"text": "生命+800",
-						"need": "status:money>=20+2*flag:shop1",
+						"text": "攻击+2（${30+5*flag:shop1}金币）",
+						"need": "status:money>=30+5*flag:shop1",
 						"action": [
 							{
 								"type": "comment",
-								"text": "新版商店中需要手动扣减金币和增加访问次数"
+								"text": "新版商店中需要手动扣减金币和增加购买次数"
 							},
 							{
 								"type": "setValue",
 								"name": "status:money",
 								"operator": "-=",
-								"value": "20+2*flag:shop1"
-							},
-							{
-								"type": "setValue",
-								"name": "flag:shop1",
-								"operator": "+=",
-								"value": "1"
-							},
-							{
-								"type": "setValue",
-								"name": "status:hp",
-								"operator": "+=",
-								"value": "800"
-							}
-						]
-					},
-					{
-						"text": "攻击+4",
-						"need": "status:money>=20+2*flag:shop1",
-						"action": [
-							{
-								"type": "comment",
-								"text": "新版商店中需要手动扣减金币和增加访问次数"
-							},
-							{
-								"type": "setValue",
-								"name": "status:money",
-								"operator": "-=",
-								"value": "20+2*flag:shop1"
+								"value": "30+5*flag:shop1"
 							},
 							{
 								"type": "setValue",
@@ -599,40 +585,100 @@ var data_a1e2fb4a_e986_4524_b0da_9b7ba7c0874d =
 								"type": "setValue",
 								"name": "status:atk",
 								"operator": "+=",
-								"value": "4"
+								"value": "2"
+							}
+						]
+					},
+					{
+						"text": "防御+2（${30+5*flag:shop1}金币）",
+						"need": "status:money>=30+5*flag:shop1",
+						"action": [
+							{
+								"type": "comment",
+								"text": "新版商店中需要手动扣减金币和增加购买次数"
+							},
+							{
+								"type": "setValue",
+								"name": "status:money",
+								"operator": "-=",
+								"value": "30+5*flag:shop1"
+							},
+							{
+								"type": "setValue",
+								"name": "flag:shop1",
+								"operator": "+=",
+								"value": "1"
+							},
+							{
+								"type": "setValue",
+								"name": "status:def",
+								"operator": "+=",
+								"value": "2"
 							}
 						]
 					}
 				]
 			},
 			{
-				"id": "expShop",
-				"text": "\t[贪婪之神,expShop]勇敢的武士啊, 给我一定经验就可以：",
+				"id": "shop2",
+				"text": "\t[贪婪之神,expShop]勇敢的武士啊, 花${30+5*flag:shop2}经验就可以强化自身（每次购买后价格+5）：",
 				"textInList": "1F经验商店",
 				"mustEnable": false,
 				"disablePreview": true,
 				"choices": [
 					{
-						"text": "等级+1（100经验）",
-						"need": "status:exp>=100",
+						"text": "攻击+2（${30+5*flag:shop2}经验）",
+						"need": "status:exp>=30+5*flag:shop2",
 						"action": [
+							{
+								"type": "comment",
+								"text": "新版商店中需要手动扣减经验并增加购买次数"
+							},
 							{
 								"type": "setValue",
 								"name": "status:exp",
 								"operator": "-=",
-								"value": "100"
+								"value": "30+5*flag:shop2"
 							},
 							{
 								"type": "setValue",
-								"name": "status:lv",
+								"name": "flag:shop2",
 								"operator": "+=",
 								"value": "1"
 							},
 							{
 								"type": "setValue",
-								"name": "status:hp",
+								"name": "status:atk",
 								"operator": "+=",
-								"value": "1000"
+								"value": "2"
+							}
+						]
+					},
+					{
+						"text": "防御+2（${30+5*flag:shop2}经验）",
+						"need": "status:exp>=30+5*flag:shop2",
+						"action": [
+							{
+								"type": "comment",
+								"text": "新版商店中需要手动扣减经验并增加购买次数"
+							},
+							{
+								"type": "setValue",
+								"name": "status:exp",
+								"operator": "-=",
+								"value": "30+5*flag:shop2"
+							},
+							{
+								"type": "setValue",
+								"name": "flag:shop2",
+								"operator": "+=",
+								"value": "1"
+							},
+							{
+								"type": "setValue",
+								"name": "status:def",
+								"operator": "+=",
+								"value": "2"
 							}
 						]
 					}
@@ -642,6 +688,7 @@ var data_a1e2fb4a_e986_4524_b0da_9b7ba7c0874d =
 				"id": "itemShop",
 				"item": true,
 				"textInList": "道具商店",
+				"use": "money",
 				"mustEnable": false,
 				"choices": [
 					{
@@ -704,13 +751,13 @@ var data_a1e2fb4a_e986_4524_b0da_9b7ba7c0874d =
 		"lavaDamage": 100,
 		"poisonDamage": 10,
 		"weakValue": 20,
-		"redGem": 4,
-		"blueGem": 4,
-		"greenGem": 30,
+		"redGem": 1,
+		"blueGem": 1,
+		"greenGem": 5,
 		"redPotion": 500,
-		"bluePotion": 1200,
-		"yellowPotion": 2500,
-		"greenPotion": 5000,
+		"bluePotion": 800,
+		"yellowPotion": 1200,
+		"greenPotion": 1700,
 		"breakArmor": 0.9,
 		"counterAttack": 0.1,
 		"purify": 3,
@@ -728,6 +775,7 @@ var data_a1e2fb4a_e986_4524_b0da_9b7ba7c0874d =
 			"enableDef",
 			"enableMDef",
 			"enableMoney",
+			"enableExp",
 			"enableKeys"
 		],
 		"autoScale": true,
@@ -744,11 +792,12 @@ var data_a1e2fb4a_e986_4524_b0da_9b7ba7c0874d =
 		"startUsingCanvas": false,
 		"statusCanvas": false,
 		"enableEnemyPoint": true,
+		"itemDetail": true,
 		"enableGentleClick": true,
 		"ignoreChangeFloor": true,
 		"canGoDeadZone": false,
 		"enableMoveDirectly": true,
-		"enableRouteFolding": true,
+		"enableRouteFolding": false,
 		"disableShopOnDamage": false,
 		"blurFg": false,
 		"chaseThroughEnemy": false

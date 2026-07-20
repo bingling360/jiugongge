@@ -1,6 +1,7 @@
-main.floors.MT2 = {
+main.floors.MT2=
+{
     "floorId": "MT2",
-    "title": "立方体·左面",
+    "title": "左面",
     "name": "左面",
     "canFlyTo": true,
     "canFlyFrom": true,
@@ -10,42 +11,135 @@ main.floors.MT2 = {
     "images": [],
     "ratio": 1,
     "map": [
-        [  0, 31,  0,  0, 27,  0,  0,  0, 28,  0,  0, 31,  0],
-        [  0,  1,  0,201,  0,  0, 31,  0,  0,202,  0,  1,  0],
-        [ 27,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 28],
-        [  0,  0,  0,  0,  0,  0,221,  0,  0,  0,  0,  0,  0],
-        [  0,  0,  0,  0,  1,  1, 85,  1,  1,  0,  0,  0,  0],
-        [ 31,  0,  0,  0,  1, 27,  0, 28,  1,  0,  0,  0, 31],
-        [  0,  0,  0,221, 85,  0,130,  0, 85,221,  0,  0,  0],
-        [ 31,  0,  0,  0,  1, 28,  0, 27,  1,  0,  0,  0, 31],
-        [  0,  0,  0,  0,  1,  1, 85,  1,  1,  0,  0,  0,  0],
-        [  0,  0,  0,  0,  0,  0,221,  0,  0,  0,  0,  0,  0],
-        [ 28,  0,  0,  0,  0,  0, 32,  0,  0,  0,  0,  0, 27],
-        [  0,  1,  0,205,  0,  0, 31,  0,  0,209,  0,  1,  0],
-        [  0, 31,  0,  0, 28,  0,  0,  0, 27,  0,  0, 31,  0]
-    ],
+    [221,  1,  1, 81,  1, 81,  1,  1,  1,  1,  1,  1,221],
+    [  1, 28,  0,203, 82, 31,215, 32, 29, 28, 21,  0,  0],
+    [  1,  0, 27,  0,  1,  0,  1,  1,  1, 81,  1,  1,  0],
+    [ 85,  1,  1, 81,  1,201, 82, 28,  1, 81,  1, 32,211],
+    [  1, 27,215,203,  1,202,  1, 27, 34,203, 81,201, 28],
+    [ 85, 28, 81,203,  1,203,  1, 82,  1,  1,  1,  1,  1],
+    [  1,217, 21, 81,130, 21,163,  0,  0,  0,  0,  0,  0],
+    [ 85, 81,  1, 82,  1,  1,  1,  1, 82,  1,  1,  1,  1],
+    [  1,  0, 28,  0,  1, 34, 29, 27,202,  1, 33, 50, 82],
+    [ 85, 22,  0,215,  1,  0, 29,210,  0, 82, 22,211, 81],
+    [  1,  1,  1, 81,  1,  1,  1, 81,  1,  1,  1, 81,  1],
+    [  1, 32, 22,  0,213,  0, 32,  0, 27,204, 21, 21,  0],
+    [221, 81,  1,  1,  1,  1, 81,  1,  1,  1,  1,  1,221]
+],
     "firstArrive": [
-        {"type":"text","text":"\t[经验贤者,expShop]击败左面的四名初级卫兵，包围经验商店的四扇机关门会同时开启。"}
+        "，左面击败本层所有初级卫兵，将会开启左面所有机关门"
     ],
     "parallelDo": "",
     "events": {
-        "6,6": [{"type":"function","function":"function(){core.openShop('expShop');}"}]
+        "4,6": {
+            "event": [
+                {
+                    "type": "openShop",
+                    "id": "shop2",
+                    "open": true
+                }
+            ]
+        }
     },
     "changeFloor": {},
     "afterBattle": {
-        "6,3": [{"type":"function","function":"function(){core.plugin.cubeWorld.openDoorsWhenClear('MT2',['yellowGateKeeper'],[[6,4],[4,6],[8,6],[6,8]]);}"}],
-        "3,6": [{"type":"function","function":"function(){core.plugin.cubeWorld.openDoorsWhenClear('MT2',['yellowGateKeeper'],[[6,4],[4,6],[8,6],[6,8]]);}"}],
-        "9,6": [{"type":"function","function":"function(){core.plugin.cubeWorld.openDoorsWhenClear('MT2',['yellowGateKeeper'],[[6,4],[4,6],[8,6],[6,8]]);}"}],
-        "6,9": [{"type":"function","function":"function(){core.plugin.cubeWorld.openDoorsWhenClear('MT2',['yellowGateKeeper'],[[6,4],[4,6],[8,6],[6,8]]);}"}]
+        "0,0": [
+            {
+                "type": "setValue",
+                "name": "flag:左面机关门计数",
+                "operator": "+=",
+                "value": "1"
+            }
+        ],
+        "12,0": [
+            {
+                "type": "setValue",
+                "name": "flag:左面机关门计数",
+                "operator": "+=",
+                "value": "1"
+            }
+        ],
+        "0,12": [
+            {
+                "type": "setValue",
+                "name": "flag:左面机关门计数",
+                "operator": "+=",
+                "value": "1"
+            }
+        ],
+        "12,12": [
+            {
+                "type": "setValue",
+                "name": "flag:左面机关门计数",
+                "operator": "+=",
+                "value": "1"
+            }
+        ]
     },
     "afterGetItem": {},
     "afterOpenDoor": {},
     "cannotMove": {},
-    "bgmap": [],
-    "fgmap": [],
+    "bgmap": [
+
+],
+    "fgmap": [
+
+],
     "width": 13,
     "height": 13,
-    "autoEvent": {},
+    "autoEvent": {
+        "0,3": {
+            "0": {
+                "condition": "flag:左面机关门计数==4",
+                "currentFloor": true,
+                "priority": 0,
+                "delayExecute": false,
+                "multiExecute": false,
+                "data": [
+                    {
+                        "type": "openDoor",
+                        "loc": [
+                            0,
+                            3
+                        ],
+                        "async": true
+                    },
+                    {
+                        "type": "openDoor",
+                        "loc": [
+                            0,
+                            5
+                        ],
+                        "async": true
+                    },
+                    {
+                        "type": "openDoor",
+                        "loc": [
+                            0,
+                            7
+                        ],
+                        "async": true
+                    },
+                    {
+                        "type": "openDoor",
+                        "loc": [
+                            0,
+                            9
+                        ],
+                        "async": true
+                    },
+                    {
+                        "type": "waitAsync"
+                    },
+                    {
+                        "type": "setValue",
+                        "name": "flag:左面机关门计数",
+                        "operator": "=",
+                        "value": "null"
+                    }
+                ]
+            }
+        }
+    },
     "beforeBattle": {},
     "cannotMoveIn": {}
-};
+}

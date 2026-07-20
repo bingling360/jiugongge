@@ -1,6 +1,7 @@
-main.floors.MT5 = {
+main.floors.MT5=
+{
     "floorId": "MT5",
-    "title": "立方体·底面",
+    "title": "底面",
     "name": "底面",
     "canFlyTo": true,
     "canFlyFrom": true,
@@ -10,44 +11,39 @@ main.floors.MT5 = {
     "images": [],
     "ratio": 1,
     "map": [
-        [  0, 31,  0, 27,  0,  0,  0,  0,  0, 28,  0, 31,  0],
-        [ 31,  0,201,  0,  0,  0,217,  0,  0,  0,202,  0, 31],
-        [  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0],
-        [ 28,  0,  0,  0,  0,  0,215,  0,  0,  0,  0,  0, 27],
-        [  0,  0,  0,  0,  1,  1, 85,  1,  1,  0,  0,  0,  0],
-        [  0,  0,  0,217,  1, 31,  0, 31,  1,215,  0,  0,  0],
-        [  0,  0,  0,  0, 85,  0, 49,  0, 85,  0,  0,  0,  0],
-        [  0,  0,  0,215,  1, 27, 34, 28,  1,217,  0,  0,  0],
-        [  0,  0,  0,  0,  1,  1, 85,  1,  1,  0,  0,  0,  0],
-        [ 27,  0,  0,  0,  0,  0,215,  0,  0,  0,  0,  0, 28],
-        [  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0],
-        [ 31,  0,209,  0,  0,  0,217,  0,  0,  0,205,  0, 31],
-        [  0, 31,  0, 28,  0,  0,  0,  0,  0, 27,  0, 31,  0]
-    ],
+    [  0,221,161,162,161,  0, 49,  0,162,161,162,221,  0],
+    [ 34,  1, 81, 81,  1,  1,  0,  1,  1, 81, 81,  1, 34],
+    [ 81, 81, 21,  0, 34, 82, 31, 82, 34,  0, 21, 81, 81],
+    [164,279,217, 28,  1,221,215,221,  1, 28,215,267,163],
+    [164,279, 28,122, 33,  1,  0,  1, 33, 83, 28,267,163],
+    [164,279,217,  1,217,  1, 34,  1,215,  1,215,267,163],
+    [164,279,  0,  1,  0,  1,162,  1, 28,  1,  0,267,163],
+    [164,279, 28,  1, 36,  1,  0,  1,  0,  1, 28,267,163],
+    [164,279, 21, 83,  0,  1, 22,  1, 47,122, 21,267,163],
+    [164, 82,217,  0,225, 32,217, 32,225,  0,215, 82,163],
+    [ 81,279, 33, 28,  0, 82, 32, 82,  0, 28, 22,267, 81],
+    [ 34, 81, 81,  0, 81, 81, 32, 81, 81,  0, 81, 81, 34],
+    [  0,221,122, 85,122, 85, 83, 85,122, 85,122,221,  0]
+],
     "firstArrive": [
-        {"type":"text","text":"\t[底面机关,sign]击败底面全部初级法师和石头人，将会开启中央宝库的四扇机关门。这个机关会跨面战斗后实时复核，不会留下死门。"}
+        "底面击败本层所有初级法师和石头人，将会开启底面所有机关门"
     ],
     "parallelDo": "",
     "events": {},
     "changeFloor": {},
-    "afterBattle": {
-        "6,1": [{"type":"function","function":"function(){core.plugin.cubeWorld.openDoorsWhenClear('MT5',['bluePriest','rock'],[[6,4],[4,6],[8,6],[6,8]]);}"}],
-        "6,3": [{"type":"function","function":"function(){core.plugin.cubeWorld.openDoorsWhenClear('MT5',['bluePriest','rock'],[[6,4],[4,6],[8,6],[6,8]]);}"}],
-        "3,5": [{"type":"function","function":"function(){core.plugin.cubeWorld.openDoorsWhenClear('MT5',['bluePriest','rock'],[[6,4],[4,6],[8,6],[6,8]]);}"}],
-        "9,5": [{"type":"function","function":"function(){core.plugin.cubeWorld.openDoorsWhenClear('MT5',['bluePriest','rock'],[[6,4],[4,6],[8,6],[6,8]]);}"}],
-        "3,7": [{"type":"function","function":"function(){core.plugin.cubeWorld.openDoorsWhenClear('MT5',['bluePriest','rock'],[[6,4],[4,6],[8,6],[6,8]]);}"}],
-        "9,7": [{"type":"function","function":"function(){core.plugin.cubeWorld.openDoorsWhenClear('MT5',['bluePriest','rock'],[[6,4],[4,6],[8,6],[6,8]]);}"}],
-        "6,9": [{"type":"function","function":"function(){core.plugin.cubeWorld.openDoorsWhenClear('MT5',['bluePriest','rock'],[[6,4],[4,6],[8,6],[6,8]]);}"}],
-        "6,11": [{"type":"function","function":"function(){core.plugin.cubeWorld.openDoorsWhenClear('MT5',['bluePriest','rock'],[[6,4],[4,6],[8,6],[6,8]]);}"}]
-    },
+    "afterBattle": {},
     "afterGetItem": {},
     "afterOpenDoor": {},
     "cannotMove": {},
-    "bgmap": [],
-    "fgmap": [],
+    "bgmap": [
+
+],
+    "fgmap": [
+
+],
     "width": 13,
     "height": 13,
     "autoEvent": {},
     "beforeBattle": {},
     "cannotMoveIn": {}
-};
+}

@@ -1,290 +1,773 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-    <title>立方体六面总览</title>
-    <style>
-        :root { color-scheme: dark; --face-size: min(54vmin, 430px); --half: calc(var(--face-size) / 2); }
-        * { box-sizing: border-box; }
-        html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: radial-gradient(circle at 50% 40%, #24324c 0, #111827 46%, #05070c 100%); color: #f8fafc; font-family: system-ui, sans-serif; }
-        #toolbar { position: fixed; inset: 12px 12px auto 12px; z-index: 20; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-right: 48px; }
-        #toolbar button, #close { border: 1px solid rgba(255,255,255,.35); border-radius: 8px; color: inherit; background: rgba(15,23,42,.8); padding: 7px 11px; cursor: pointer; backdrop-filter: blur(6px); }
-        #toolbar button:hover, #toolbar button.active { background: #2563eb; border-color: #93c5fd; }
-        #close { position: fixed; z-index: 30; top: 12px; right: 12px; width: 38px; height: 38px; padding: 0; font-size: 24px; line-height: 34px; }
-        #scene { position: absolute; inset: 72px 0 42px; display: grid; place-items: center; perspective: none; touch-action: none; cursor: grab; }
-        #scene.dragging { cursor: grabbing; }
-        #cube { position: relative; width: var(--face-size); height: var(--face-size); transform-style: preserve-3d; transform: rotateX(-35.26438968deg) rotateY(45deg) scale3d(.72,.72,.72); }
-        .face { position: absolute; inset: 0; border: 2px solid rgba(191,219,254,.75); background: #111827; box-shadow: inset 0 0 28px rgba(0,0,0,.6); backface-visibility: hidden; }
-        .face canvas { display: block; width: 100%; height: 100%; image-rendering: auto; }
-        .face .caption { position: absolute; left: 5px; top: 5px; padding: 3px 7px; border-radius: 5px; background: rgba(0,0,0,.72); font-size: 12px; pointer-events: none; }
-        .face.current { border-color: #facc15; box-shadow: 0 0 22px rgba(250,204,21,.85), inset 0 0 25px rgba(0,0,0,.45); }
-        .front  { transform: translateZ(var(--half)); }
-        .back   { transform: rotateY(180deg) translateZ(var(--half)); }
-        .left   { transform: rotateY(-90deg) translateZ(var(--half)); }
-        .right  { transform: rotateY(90deg) translateZ(var(--half)); }
-        .top    { transform: rotateX(90deg) translateZ(var(--half)); }
-        .bottom { transform: rotateX(-90deg) translateZ(var(--half)); }
-        #hint { position: fixed; left: 12px; right: 12px; bottom: 10px; text-align: center; color: #cbd5e1; font-size: 13px; pointer-events: none; }
-        #error { display: none; position: fixed; inset: 40% 12%; z-index: 40; text-align: center; color: #fecaca; }
-        @media (max-width: 650px) {
-            :root { --face-size: min(62vmin, 360px); }
-            #toolbar { inset: 8px 48px auto 8px; gap: 5px; }
-            #toolbar button { padding: 5px 7px; font-size: 12px; }
-            #scene { top: 88px; }
-            #hint { font-size: 11px; }
-        }
-    </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>正方体地图 - 3D 地图查看器</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0a12; font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; color: #e0e0e0; }
+  #app { display: flex; width: 100%; height: 100%; }
+  #panel-left { width: 380px; min-width: 380px; display: flex; flex-direction: column; background: #111118; border-right: 1px solid #2a2a3a; }
+  #panel-header { padding: 14px 20px 10px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #1e1e2a; }
+  #panel-header h2 { font-size: 12px; font-weight: 600; color: #555; letter-spacing: 2px; }
+  #face-info { padding: 12px 20px 4px; display: flex; align-items: center; gap: 10px; }
+  #face-name { font-size: 22px; font-weight: 700; color: #f0f0f0; transition: color 0.2s; }
+  #face-id { font-size: 11px; color: #444; background: #14141e; padding: 1px 8px; border-radius: 3px; font-family: monospace; }
+  #thumbnail-container { flex: 1; display: flex; align-items: center; justify-content: center; padding: 14px; position: relative; min-height: 0; }
+  #thumbnail-canvas { border: 1px solid #222230; border-radius: 4px; image-rendering: pixelated; max-width: 100%; max-height: 100%; }
+  #face-selector { padding: 8px 14px 10px; border-top: 1px solid #1a1a24; display: flex; gap: 4px; flex-wrap: wrap; background: #0c0c14; }
+  .face-btn { flex: 1; min-width: 40px; padding: 4px 2px; font-size: 10px; background: #161620; color: #666; border: 1px solid #242430; border-radius: 3px; cursor: pointer; text-align: center; transition: all 0.15s; font-family: inherit; }
+  .face-btn:hover { background: #242430; color: #bbb; }
+  .face-btn.active { background: #142840; color: #7aacff; border-color: #1a3a5a; box-shadow: 0 0 6px rgba(68,136,255,0.12); }
+  #face-legend { padding: 6px 14px 8px; border-top: 1px solid #1a1a24; display: flex; flex-wrap: wrap; gap: 3px; background: #0c0c14; }
+  .legend-item { display: flex; align-items: center; gap: 3px; font-size: 10px; color: #666; padding: 1px 5px; background: #12121a; border-radius: 2px; }
+  .legend-swatch { width: 8px; height: 8px; border-radius: 1px; border: 1px solid #222230; flex-shrink: 0; }
+  #panel-right { flex: 1; position: relative; overflow: hidden; background: #0a0a14; }
+  #three-container { width: 100%; height: 100%; }
+  #controls-hint { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); background: rgba(8,8,14,0.85); border: 1px solid #222230; border-radius: 6px; padding: 5px 12px; font-size: 10px; color: #444; display: flex; gap: 12px; backdrop-filter: blur(8px); user-select: none; pointer-events: none; white-space: nowrap; }
+  #controls-hint span { display: flex; align-items: center; gap: 3px; }
+  kbd { background: #101018; border: 1px solid #222230; border-radius: 2px; padding: 0 4px; font-size: 9px; color: #777; }
+  #loading { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #0a0a12; z-index: 9999; transition: opacity 0.5s; }
+  #loading.hidden { opacity: 0; pointer-events: none; }
+  #loading .spinner { width: 32px; height: 32px; border: 3px solid #181824; border-top-color: #4488ff; border-radius: 50%; animation: spin 0.8s linear infinite; }
+  #loading p { margin-top: 12px; color: #444; font-size: 12px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (max-width: 720px) {
+    #app { flex-direction: column; }
+    #panel-left { width: 100%; min-width: unset; height: 40vh; border-right: none; border-bottom: 1px solid #242430; }
+    #panel-right { height: 60vh; }
+  }
+  /* 地图伤害显示控制 */
+  #damage-control { padding: 8px 14px 10px; border-top: 1px solid #1a1a24; background: #0c0c14; }
+  .dc-title { font-size: 11px; color: #777; margin-bottom: 6px; letter-spacing: 1px; }
+  .dc-row { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 4px; }
+  .dc-btn { flex: 1; min-width: 40px; padding: 5px 2px; font-size: 11px; background: #161620; color: #555; border: 1px solid #242430; border-radius: 3px; cursor: pointer; font-family: inherit; transition: all 0.15s; }
+  .dc-btn:hover { background: #242430; color: #bbb; }
+  .dc-btn.active { background: #142840; color: #7aacff; border-color: #1a3a5a; box-shadow: 0 0 6px rgba(68,136,255,0.12); }
+  .dc-btn[data-type="master"] { color: #aa88ff; }
+  .dc-btn[data-type="master"].active { background: #241433; color: #c9a3ff; border-color: #4a2a5a; box-shadow: 0 0 6px rgba(160,110,255,0.15); }
+  .dc-btn.disabled { opacity: 0.3; cursor: not-allowed; pointer-events: none; }
+</style>
 </head>
 <body>
-    <div id="toolbar" aria-label="选择观察面">
-        <button data-face="MT0">正面</button><button data-face="MT1">背面</button>
-        <button data-face="MT2">左面</button><button data-face="MT3">右面</button>
-        <button data-face="MT4">顶面</button><button data-face="MT5">底面</button>
-        <button id="reset">自由视角</button>
+<div id="loading"><div class="spinner"></div><p>加载 3D 场景...</p></div>
+<div id="app">
+  <div id="panel-left">
+    <div id="panel-header"><h2>当前面</h2></div>
+    <div id="face-info">
+      <span id="face-name">正面</span>
+      <span id="face-id">MT0</span>
     </div>
-    <button id="close" title="关闭（Esc / C）" aria-label="关闭">×</button>
-    <div id="scene">
-        <div id="cube">
-            <div class="face front" data-floor="MT0"><canvas width="416" height="416"></canvas><span class="caption">MT0 正面</span></div>
-            <div class="face back" data-floor="MT1"><canvas width="416" height="416"></canvas><span class="caption">MT1 背面</span></div>
-            <div class="face left" data-floor="MT2"><canvas width="416" height="416"></canvas><span class="caption">MT2 左面</span></div>
-            <div class="face right" data-floor="MT3"><canvas width="416" height="416"></canvas><span class="caption">MT3 右面</span></div>
-            <div class="face top" data-floor="MT4"><canvas width="416" height="416"></canvas><span class="caption">MT4 顶面</span></div>
-            <div class="face bottom" data-floor="MT5"><canvas width="416" height="416"></canvas><span class="caption">MT5 底面</span></div>
-        </div>
+    <div id="thumbnail-container">
+      <canvas id="thumbnail-canvas" width="338" height="338"></canvas>
     </div>
-    <div id="hint">拖动旋转 · 滚轮或双指缩放 · 黄色边框为勇士所在面 · Esc / C 关闭</div>
-    <div id="error">无法读取游戏地图。关闭总览后仍可继续游戏。</div>
-    <script>
-        (function () {
-            "use strict";
-            var scene = document.getElementById("scene");
-            var cube = document.getElementById("cube");
-            var error = document.getElementById("error");
-            var FREE_VIEW = { x: -35.26438968, y: 45 };
-            var DRAG_DEGREES_PER_PIXEL = 0.45;
-            var scale = 0.72;
-            var pointers = new Map(), pinchDistance = null;
-            var views = {
-                MT0: { x: 0, y: 0 }, MT1: { x: 0, y: 180 }, MT2: { x: 0, y: 90 },
-                MT3: { x: 0, y: -90 }, MT4: { x: -90, y: 0 }, MT5: { x: 90, y: 0 }
-            };
+    <div id="face-selector">
+      <button data-face="MT0" class="face-btn active" onclick="window.selectFace('MT0')">正面</button>
+      <button data-face="MT1" class="face-btn" onclick="window.selectFace('MT1')">后面</button>
+      <button data-face="MT2" class="face-btn" onclick="window.selectFace('MT2')">左面</button>
+      <button data-face="MT3" class="face-btn" onclick="window.selectFace('MT3')">右面</button>
+      <button data-face="MT4" class="face-btn" onclick="window.selectFace('MT4')">顶面</button>
+      <button data-face="MT5" class="face-btn" onclick="window.selectFace('MT5')">底面</button>
+    </div>
+    <div id="face-legend">
+      <div class="legend-item"><span class="legend-swatch" style="background:#3a3a4a"></span>墙</div>
+      <div class="legend-item"><span class="legend-swatch" style="background:#553333"></span>敌</div>
+      <div class="legend-item"><span class="legend-swatch" style="background:#446644"></span>NPC</div>
+      <div class="legend-item"><span class="legend-swatch" style="background:#ccaa44"></span>钥</div>
+      <div class="legend-item"><span class="legend-swatch" style="background:#dd8844"></span>门</div>
+      <div class="legend-item"><span class="legend-swatch" style="background:#4488cc"></span>道具</div>
+      <div class="legend-item" style="border-top:1px dashed #1a1a24;margin-top:2px;padding-top:4px;width:100%">伤害显示：</div>
+      <div class="legend-item"><span class="legend-swatch" style="background:#ff5555"></span>怪伤/激光</div>
+      <div class="legend-item"><span class="legend-swatch" style="background:#ff66cc"></span>领域</div>
+      <div class="legend-item"><span class="legend-swatch" style="background:#55aaff"></span>阻击</div>
+      <div class="legend-item"><span class="legend-swatch" style="background:#ffaa33"></span>血网/捕捉</div>
+    </div>
+    <div id="damage-control">
+      <div class="dc-title">地图伤害显示</div>
+      <div class="dc-row">
+        <button class="dc-btn active" data-type="master" onclick="window.toggleDamage('master')">显示地图伤害</button>
+      </div>
+      <div class="dc-row">
+        <button class="dc-btn active" data-type="阻击伤害" onclick="window.toggleDamage('阻击伤害')">阻击</button>
+        <button class="dc-btn active" data-type="激光伤害" onclick="window.toggleDamage('激光伤害')">激光</button>
+        <button class="dc-btn active" data-type="领域伤害" onclick="window.toggleDamage('领域伤害')">领域</button>
+        <button class="dc-btn active" data-type="血网伤害" onclick="window.toggleDamage('血网伤害')">血网</button>
+        <button class="dc-btn active" data-type="捕捉" onclick="window.toggleDamage('捕捉')">捕捉</button>
+      </div>
+    </div>
+  </div>
+  <div id="panel-right">
+    <div id="three-container"></div>
+    <div id="controls-hint">
+      <span>🖱 <kbd>左键拖</kbd> 旋转</span>
+      <span><kbd>滚轮</kbd> 缩放</span>
+      <span><kbd>右键拖</kbd> 平移</span>
+    </div>
+  </div>
+</div>
+<script>window.main = window.main || { floors: {} };</script>
+<script src="project/floors/MT0.js"></script>
+<script src="project/floors/MT1.js"></script>
+<script src="project/floors/MT2.js"></script>
+<script src="project/floors/MT3.js"></script>
+<script src="project/floors/MT4.js"></script>
+<script src="project/floors/MT5.js"></script>
+<script type="importmap">
+{
+  "imports": {
+    "three": "./lib/three/three.module.min.js",
+    "three/addons/": "./lib/three/"
+  }
+}
+</script>
+<script>
+// 兜底：若 three.js 资源加载失败（如路径/服务器 MIME 问题），避免“一直转圈”无限等待
+window.addEventListener('error', function (e) {
+  var l = document.getElementById('loading');
+  if (l && !l.classList.contains('hidden')) {
+    if (l.querySelector('.spinner')) l.querySelector('.spinner').style.display = 'none';
+    if (l.querySelector('p')) l.querySelector('p').textContent = '3D 资源加载失败：请确认 lib/three 目录已正确上传，且服务器以 application/javascript 返回 .js 文件。';
+  }
+}, true);
+setTimeout(function () {
+  var l = document.getElementById('loading');
+  if (l && !l.classList.contains('hidden')) {
+    if (l.querySelector('.spinner')) l.querySelector('.spinner').style.display = 'none';
+    if (l.querySelector('p')) l.querySelector('p').textContent = '3D 场景加载超时：请检查网络或 lib/three 路径是否正确上传。';
+  }
+}, 10000);
+</script>
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/OrbitControls.js";
 
-            function multiplyQuaternion(left, right) {
-                return {
-                    w: left.w * right.w - left.x * right.x - left.y * right.y - left.z * right.z,
-                    x: left.w * right.x + left.x * right.w + left.y * right.z - left.z * right.y,
-                    y: left.w * right.y - left.x * right.z + left.y * right.w + left.z * right.x,
-                    z: left.w * right.z + left.x * right.y - left.y * right.x + left.z * right.w
-                };
-            }
+window.main = window.main || { floors: {} };
 
-            function normalizeQuaternion(value) {
-                var length = Math.sqrt(value.w * value.w + value.x * value.x + value.y * value.y + value.z * value.z);
-                if (!length) return { w: 1, x: 0, y: 0, z: 0 };
-                var result = {
-                    w: value.w / length, x: value.x / length,
-                    y: value.y / length, z: value.z / length
-                };
-                // q 与 -q 表示同一姿态；统一符号可避免长期拖动后数值无谓跳变。
-                if (result.w < 0) {
-                    result.w = -result.w; result.x = -result.x;
-                    result.y = -result.y; result.z = -result.z;
-                }
-                return result;
-            }
+// 楼层名称（优先取楼层自身的 title，回退到固定映射）
+var FACE_NAMES = { MT0: "正面", MT1: "后面", MT2: "左面", MT3: "右面", MT4: "顶面", MT5: "底面" };
+var FACE_COLORS = { MT0: "#4488ff", MT1: "#ff6644", MT2: "#44cc88", MT3: "#cc44cc", MT4: "#ffcc44", MT5: "#44ccff" };
+var FACE_ORDER = ["MT0", "MT1", "MT2", "MT3", "MT4", "MT5"];
 
-            function axisAngleQuaternion(x, y, z, degrees) {
-                var radians = degrees * Math.PI / 180;
-                var half = radians / 2, sine = Math.sin(half);
-                return normalizeQuaternion({ w: Math.cos(half), x: x * sine, y: y * sine, z: z * sine });
-            }
+// 回退配色（当父窗口 core 不可用时使用色块）
+var BC = { 0: "#1a1a2e", 1: "#5a5a7a", 21: "#ffd700", 22: "#4499ff", 23: "#ff4444", 24: "#44dd44", 25: "#8888aa", 26: "#ff8800", 27: "#ff2255", 28: "#3377ff", 29: "#33dd66", 30: "#ffcc33", 31: "#ff5577", 32: "#5599ff", 33: "#55ee88", 34: "#ffee55", 35: "#cc8844", 36: "#4488cc", 37: "#cc8844", 38: "#4488cc", 39: "#cc8844", 40: "#4488cc", 41: "#cc8844", 42: "#4488cc", 43: "#cc8844", 44: "#4488cc", 45: "#aabb88", 46: "#cc88ff", 47: "#99aabb", 48: "#88ddff", 49: "#886644", 50: "#9966dd", 51: "#66aaff", 52: "#ffaa66", 53: "#ffcc00", 54: "#66ddff", 55: "#ffffff", 56: "#ff66aa", 57: "#aa6633", 58: "#88aa44", 59: "#aa8844", 60: "#884488", 61: "#ff44aa", 62: "#aabbcc", 63: "#aa8866", 64: "#66aaff", 65: "#aa8844", 68: "#44dd88", 69: "#ffaa44", 70: "#999999", 71: "#999999", 72: "#ff6644", 73: "#6666ff", 81: "#cc9900", 82: "#3366cc", 83: "#cc3333", 84: "#33aa55", 85: "#aabb66", 86: "#8899aa", 87: "#ffffff", 88: "#999999", 89: "#ff66ff", 90: "#66ffff", 91: "#44aadd", 161: "#66dd44", 162: "#44dd66", 163: "#44cc44", 164: "#44ee77", 168: "#ff88cc", 201: "#44cc66", 202: "#cc3344", 203: "#333344", 204: "#339988", 221: "#ffcc44", 222: "#4488ff", 223: "#ff4444", 224: "#8899bb" };
+var BM = { 87: "▲", 88: "▼", 89: "◎", 90: "☆", 161: "▲", 162: "▼", 163: "◀", 164: "▶", 168: "◇", 221: "▲", 222: "▼", 223: "▲", 224: "▼" };
 
-            function orientationFromEuler(x, y) {
-                // 与 CSS 的 rotateX(x) rotateY(y) 顺序一致：先绕 Y，再绕 X。
-                return normalizeQuaternion(multiplyQuaternion(
-                    axisAngleQuaternion(1, 0, 0, x),
-                    axisAngleQuaternion(0, 1, 0, y)
-                ));
-            }
+function bc(id) {
+  if (BC[id]) return BC[id];
+  if (id >= 150 && id <= 250) return "#992222";
+  if (id >= 100) return "#774444";
+  return "#1a1a2e";
+}
+function floorName(fid) {
+  var f = window.main.floors[fid];
+  if (f && (f.title || f.name)) return f.title || f.name;
+  return FACE_NAMES[fid] || fid;
+}
 
-            var orientation = orientationFromEuler(FREE_VIEW.x, FREE_VIEW.y);
+// 取得父窗口（游戏本体）的 core，用于渲染真实贴图
+function getParentCore() {
+  try {
+    if (window.parent && window.parent !== window && window.parent.core &&
+        window.parent.core.material && window.parent.core.material.images && window.parent.core.getBlockInfo)
+      return window.parent.core;
+  } catch (e) {}
+  return null;
+}
 
-            function quaternionTransform(value) {
-                var normalized = normalizeQuaternion(value);
-                var vectorLength = Math.sqrt(
-                    normalized.x * normalized.x + normalized.y * normalized.y + normalized.z * normalized.z
-                );
-                if (vectorLength < 1e-10) return "rotate3d(1,0,0,0rad)";
-                var angle = 2 * Math.atan2(vectorLength, normalized.w);
-                return "rotate3d(" + [
-                    normalized.x / vectorLength,
-                    normalized.y / vectorLength,
-                    normalized.z / vectorLength,
-                    angle + "rad"
-                ].join(",") + ")";
-            }
+// 获取楼层的“实时”地图数组：怪物被击杀、门被打开等状态变化会即时反映。
+// 优先从 core.status.maps[fid] 的 blocks 重建（会跳过 disable 的图块），
+// 若该楼层尚未加载则回退到静态初始地图 f.map。
+function getRealtimeMap(core, fid, f) {
+  if (core && core.status && core.status.maps && core.status.maps[fid]) {
+    try {
+      if (core.extractBlocks) core.extractBlocks(fid);
+      if (core.getMapArray) {
+        var arr = core.getMapArray(fid, true); // noCache=true -> 依据 blocks(含disable) 重建
+        if (arr && arr.length) return arr;
+      }
+      var m = core.status.maps[fid].map;
+      if (m && m.length) return m;
+    } catch (e) {}
+  }
+  return f ? f.map : null;
+}
 
-            function renderTransform() {
-                cube.style.transform = quaternionTransform(orientation) + " scale3d(" + [scale, scale, scale].join(",") + ")";
-            }
+// ---- 贴图绘制工具 ----
+function drawSprite(ctx, img, sx, sy, sw, sh, dx, dy, dw, dh) {
+  if (!img) return;
+  try { ctx.drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh); } catch (e) {}
+}
+// 绘制图块底部 32x32（与游戏一致，高个子怪物只露出下半身，作为小地图足够）
+function drawBlockBottom(ctx, info, dx, dy, size) {
+  if (!info || !info.image) return;
+  var h = info.height || 32;
+  var sx = (info.posX || 0) * 32;
+  var sy = info.posY * h + h - 32;
+  drawSprite(ctx, info.image, sx, sy, 32, 32, dx, dy, size, size);
+}
+function drawGround(ctx, info, dx, dy, size) {
+  if (!info || !info.image) return;
+  var sx = (info.posX || 0) * 32;
+  var sy = info.posY * (info.height || 32);
+  drawSprite(ctx, info.image, sx, sy, 32, 32, dx, dy, size, size);
+}
+function drawHero(ctx, core, dx, dy, size) {
+  if (!core || !core.status || !core.status.hero) return;
+  var hero = core.status.hero;
+  var icons = core.material.icons;
+  if (!icons || !icons.hero) return;
+  var heroImg = core.material.images.hero || (core.material.images.images && core.material.images.images.hero) ||
+                (core.material.images.images && core.material.images.images.brave);
+  if (!heroImg) return;
+  var dir = (hero.loc && hero.loc.direction) || "down";
+  var icon = icons.hero[dir] || icons.hero.down || icons.hero.stop;
+  if (!icon) return;
+  var w = icons.hero.width || 32;
+  var h = icons.hero.height || 48;
+  var sx = (icon.stop || 0) * w;
+  var sy = (icon.loc || 0) * h;
+  // 整体缩放绘制（含头顶），居中落在格子内
+  drawSprite(ctx, heroImg, sx, sy, w, h, dx, dy + size - (size * h / 32), size, size * h / 32);
+}
 
-            function clearActiveFace() {
-                document.querySelectorAll("[data-face]").forEach(function (one) { one.classList.remove("active"); });
-            }
+// ---- 伤害显示叠加（怪物伤害 + 领域/阻击/激光地图伤害）----
+// 数据来源与游戏本体完全一致：
+//   怪物伤害 -> core.enemys.getDamageString(id,x,y,fid)  （同 libs/control.js getEnemyValueString）
+//   地图伤害 -> core.control.getCheckBlock(fid).damage / .type（同 libs/control.js _updateDamage_extraDamage）
+function drawDamageText(ctx, text, px, py, cell, color, align, baseline) {
+  if (text == null || text === "") return;
+  var fs = Math.max(8, Math.round(cell * 0.4));
+  ctx.font = "bold " + fs + "px 'Arial','Microsoft YaHei',sans-serif";
+  ctx.textAlign = align || "center";
+  ctx.textBaseline = baseline || "middle";
+  ctx.lineJoin = "round";
+  ctx.lineWidth = Math.max(2, fs * 0.22);
+  ctx.strokeStyle = "rgba(0,0,0,0.85)";
+  ctx.strokeText(text, px, py);
+  ctx.fillStyle = color || "#ffffff";
+  ctx.fillText(text, px, py);
+}
 
-            function setView(view, nextScale) {
-                orientation = orientationFromEuler(view.x, view.y);
-                scale = nextScale;
-                renderTransform();
-            }
+// 地图伤害显示开关（用户可在 3D 查看器内控制是否显示各类地图伤害）
+window._damageOpts = {
+  master: true,          // 总开关：是否显示地图伤害
+  "阻击伤害": true,
+  "激光伤害": true,
+  "领域伤害": true,
+  "血网伤害": true,
+  "捕捉": true
+};
 
-            function rotateFromPointerDelta(dx, dy) {
-                if (!dx && !dy) return;
-                var aroundScreenX = axisAngleQuaternion(1, 0, 0, -dy * DRAG_DEGREES_PER_PIXEL);
-                var aroundScreenY = axisAngleQuaternion(0, 1, 0, dx * DRAG_DEGREES_PER_PIXEL);
-                orientation = normalizeQuaternion(multiplyQuaternion(
-                    aroundScreenY,
-                    multiplyQuaternion(aroundScreenX, orientation)
-                ));
-            }
+// 在已开启的类型中，按优先级（激光 > 领域 > 阻击 > 血网）挑选该格子应显示的类型；
+// 若格子没有任何具体类型标记（如普通地图伤害），返回 "__generic__" 表示始终显示。
+function resolveDamageType(types, opts) {
+  if (!types || Object.keys(types).length === 0) return "__generic__";
+  var order = ["激光伤害", "领域伤害", "阻击伤害", "血网伤害"];
+  for (var i = 0; i < order.length; i++) {
+    if (opts[order[i]] && types[order[i]]) return order[i];
+  }
+  return null;
+}
+function damageTypeStyle(typeKey) {
+  if (typeKey === "__generic__") return { color: "#ffaa33", label: "" };
+  if (typeKey === "激光伤害") return { color: "#ff5555", label: "激" };
+  if (typeKey === "领域伤害") return { color: "#ff66cc", label: "域" };
+  if (typeKey === "阻击伤害") return { color: "#55aaff", label: "阻" };
+  if (typeKey === "血网伤害") return { color: "#ffaa33", label: "网" };
+  return { color: "#ffaa33", label: "" };
+}
 
-            function firstTwoPointersDistance() {
-                if (pointers.size < 2) return null;
-                var iterator = pointers.values();
-                var first = iterator.next().value, second = iterator.next().value;
-                return Math.hypot(first.x - second.x, first.y - second.y);
-            }
+function drawDamageOverlay(ctx, fid, cell, ox, oy) {
+  var core = getParentCore();
+  if (!core) return;
+  ox = ox || 0; oy = oy || 0;
 
-            function updateInteractionCursor() {
-                scene.classList.toggle("dragging", pointers.size === 1);
-            }
+  // 尊重游戏内显伤开关；未设置时默认显示
+  var showEnemy = core.flags ? core.flags.displayEnemyDamage !== false : true;
+  var showExtra = core.flags ? core.flags.displayExtraDamage !== false : true;
+  var opts = window._damageOpts || { master: true };
 
-            function gameCore() {
-                return parent && parent.core && parent.core.plugin && parent.core.plugin.cubeWorld ? parent.core : null;
-            }
+  try { core.extractBlocks(fid); } catch (e) {}
 
-            function drawDamage(ctx, floorId, runtime) {
-                var check = runtime.buildCheckBlock(floorId);
-                if (!check) return;
-                var cell = ctx.canvas.width / 13;
-                ctx.save();
-                ctx.textAlign = "center";
-                ctx.textBaseline = "middle";
-                ctx.font = "bold 11px sans-serif";
-                Object.keys(check.damage || {}).forEach(function (key) {
-                    var value = check.damage[key];
-                    if (!(value > 0)) return;
-                    var xy = key.split(",").map(Number), x = xy[0], y = xy[1];
-                    ctx.fillStyle = "rgba(190, 24, 93, .42)";
-                    ctx.fillRect(x * cell, y * cell, cell, cell);
-                    ctx.fillStyle = "#fff7ed";
-                    ctx.strokeStyle = "rgba(0,0,0,.85)";
-                    ctx.lineWidth = 3;
-                    var label = value >= 10000 ? Math.round(value / 1000) + "k" : String(value);
-                    ctx.strokeText(label, (x + .5) * cell, (y + .5) * cell);
-                    ctx.fillText(label, (x + .5) * cell, (y + .5) * cell);
-                });
-                ctx.restore();
-            }
+  // 1) 怪物伤害（右下角，数字与颜色取自引擎）
+  if (showEnemy) {
+    var blocks = (core.status.maps[fid] && core.status.maps[fid].blocks) || [];
+    for (var i = 0; i < blocks.length; i++) {
+      var b = blocks[i];
+      if (!b || b.disable || !b.event || !b.event.cls) continue;
+      if (b.event.cls.indexOf("enemy") !== 0) continue;
+      if (b.event.displayDamage === false) continue;
+      var ds = null;
+      try { ds = core.enemys.getDamageString(b.event.id, b.x, b.y, fid); } catch (e) {}
+      if (!ds || ds.damage == null || ds.damage === "") {
+        // 回退：直接用伤害计算
+        try {
+          var einfo = core.getDamageInfo(b.event.id, null, b.x, b.y, fid);
+          if (einfo != null) ds = { damage: (typeof einfo === "number" ? einfo : einfo.damage), color: "#ff5555" };
+        } catch (e2) {}
+      }
+      if (!ds || ds.damage == null || ds.damage === "") continue;
+      var px = ox + (b.x + 1) * cell - 2;
+      var py = oy + (b.y + 1) * cell - 2;
+      drawDamageText(ctx, String(ds.damage), px, py, cell, ds.color || "#ff5555", "right", "bottom");
+    }
+  }
 
-            function refresh() {
-                try {
-                    var c = gameCore();
-                    if (!c || !c.status || !c.status.maps) throw new Error("游戏尚未初始化");
-                    document.querySelectorAll(".face").forEach(function (face) {
-                        var floorId = face.dataset.floor;
-                        var canvas = face.querySelector("canvas"), ctx = canvas.getContext("2d");
-                        ctx.clearRect(0, 0, canvas.width, canvas.height);
-                        var options = { ctx: ctx, x: 0, y: 0, size: canvas.width, damage: false, all: true, noHD: true };
-                        if (c.status.floorId === floorId) {
-                            options.heroLoc = c.clone(c.status.hero.loc);
-                            options.heroIcon = c.status.hero.image;
-                            face.classList.add("current");
-                        } else face.classList.remove("current");
-                        c.drawThumbnail(floorId, null, options);
-                        drawDamage(ctx, floorId, c.plugin.cubeWorld);
-                    });
-                    error.style.display = "none";
-                } catch (e) {
-                    error.textContent = "六面地图暂时无法绘制：" + (e && e.message ? e.message : e) + "。关闭总览后仍可继续游戏。";
-                    error.style.display = "block";
-                }
-            }
+  // 2) 领域/阻击/激光/血网 地图伤害（格中心，颜色按类型区分）
+  if (showExtra && opts.master) {
+    var cb = null;
+    try { cb = core.control.getCheckBlock(fid); } catch (e) {}
+    if (cb && cb.damage) {
+      for (var key in cb.damage) {
+        var val = cb.damage[key];
+        if (!val) continue;
+        var parts = String(key).split(",");
+        var x = parseInt(parts[0], 10), y = parseInt(parts[1], 10);
+        if (isNaN(x) || isNaN(y)) continue;
+        var types = (cb.type && cb.type[key]) || {};
+        var tkey = resolveDamageType(types, opts);
+        if (!tkey) continue; // 该格子所有类型均被关闭，则不显示
+        var st = damageTypeStyle(tkey);
+        var px2 = ox + x * cell + cell / 2;
+        var py2 = oy + y * cell + cell / 2;
+        var txt = st.label ? (st.label + val) : String(val);
+        drawDamageText(ctx, txt, px2, py2, cell, st.color, "center", "middle");
+      }
+      // 捕捉标记（无伤害值，画 !）
+      if (opts["捕捉"] && cb.ambush) {
+        for (var akey in cb.ambush) {
+          if (!cb.ambush[akey] || !cb.ambush[akey].length) continue;
+          var aparts = String(akey).split(",");
+          var ax = parseInt(aparts[0], 10), ay = parseInt(aparts[1], 10);
+          if (isNaN(ax) || isNaN(ay)) continue;
+          drawDamageText(ctx, "!", ox + ax * cell + cell / 2, oy + ay * cell + cell / 2, cell, "#ffaa33", "center", "middle");
+        }
+      }
+    }
+  }
+}
 
-            document.querySelectorAll("[data-face]").forEach(function (button) {
-                button.addEventListener("click", function () {
-                    var view = views[button.dataset.face];
-                    document.querySelectorAll("[data-face]").forEach(function (one) { one.classList.toggle("active", one === button); });
-                    setView(view, 0.82);
-                });
-            });
-            document.getElementById("reset").addEventListener("click", function () {
-                clearActiveFace();
-                setView(FREE_VIEW, 0.72);
-            });
-            document.getElementById("close").addEventListener("click", function () {
-                var c = gameCore(); if (c) c.plugin.cubeWorld.closeViewer();
-            });
-            document.addEventListener("keydown", function (event) {
-                if (event.key === "Escape" || event.key.toLowerCase() === "c") {
-                    event.preventDefault();
-                    var c = gameCore(); if (c) c.plugin.cubeWorld.closeViewer();
-                }
-            });
-            scene.addEventListener("pointerdown", function (event) {
-                if (event.pointerType === "mouse" && event.button !== 0) return;
-                pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
-                pinchDistance = firstTwoPointersDistance();
-                updateInteractionCursor();
-                scene.setPointerCapture(event.pointerId);
-                event.preventDefault();
-            });
-            scene.addEventListener("pointermove", function (event) {
-                var previous = pointers.get(event.pointerId);
-                if (!previous) return;
-                var dx = event.clientX - previous.x, dy = event.clientY - previous.y;
-                previous.x = event.clientX; previous.y = event.clientY;
-                if (pointers.size === 1) {
-                    rotateFromPointerDelta(dx, dy);
-                    clearActiveFace();
-                } else {
-                    var distance = firstTwoPointersDistance();
-                    if (pinchDistance && distance) {
-                        scale = Math.max(0.38, Math.min(1.12, scale * distance / pinchDistance));
-                    }
-                    pinchDistance = distance;
-                }
-                renderTransform();
-                event.preventDefault();
-            });
-            function stopPointer(event) {
-                if (!pointers.has(event.pointerId)) return;
-                pointers.delete(event.pointerId);
-                pinchDistance = firstTwoPointersDistance();
-                updateInteractionCursor();
-            }
-            scene.addEventListener("pointerup", stopPointer);
-            scene.addEventListener("pointercancel", stopPointer);
-            scene.addEventListener("lostpointercapture", stopPointer);
-            scene.addEventListener("wheel", function (event) {
-                event.preventDefault(); scale = Math.max(.38, Math.min(1.12, scale - event.deltaY * .0008)); renderTransform();
-            }, { passive: false });
+// ============================================================
+// 左侧当前楼层缩略图（真实贴图）
+// ============================================================
+function renderRealFloor(ctx, fid, f, cw, ch) {
+  var core = getParentCore();
+  var map = getRealtimeMap(core, fid, f) || (f ? f.map : null);
+  if (!map) { renderFallback(ctx, fid, f, cw, ch); return; }
+  var mh = map.length, mw = map[0] ? map[0].length : 0;
+  var cell = Math.floor(Math.min(cw, ch) / Math.max(mw, mh));
+  var ox = Math.floor((cw - mw * cell) / 2);
+  var oy = Math.floor((ch - mh * cell) / 2);
 
-            window.CubeViewer = {
-                refresh: refresh,
-                getViewState: function () {
-                    return {
-                        quaternion: [orientation.w, orientation.x, orientation.y, orientation.z],
-                        scale: scale,
-                        pointerCount: pointers.size
-                    };
-                }
-            };
-            renderTransform();
-            window.addEventListener("load", refresh);
-        })();
-    </script>
+  ctx.clearRect(0, 0, cw, ch);
+  ctx.fillStyle = "#0a0a16";
+  ctx.fillRect(0, 0, cw, ch);
+
+  var groundId = f.defaultGround || "ground";
+  var groundInfo = core.getBlockInfo(groundId) || core.getBlockInfo(1);
+
+  for (var y = 0; y < mh; y++) {
+    for (var x = 0; x < mw; x++) {
+      var dx = ox + x * cell;
+      var dy = oy + y * cell;
+      if (groundInfo) drawGround(ctx, groundInfo, dx, dy, cell);
+      else { ctx.fillStyle = "#2a2a3a"; ctx.fillRect(dx, dy, cell, cell); }
+      var id = map[y] ? map[y][x] : 0;
+      if (id) {
+        var info = core.getBlockInfo(id);
+        if (info) drawBlockBottom(ctx, info, dx, dy, cell);
+      }
+    }
+  }
+
+  // 玩家（仅当前所在楼层）
+  if (core.status && core.status.floorId === fid && core.status.hero) {
+    var hx = core.status.hero.loc.x, hy = core.status.hero.loc.y;
+    drawHero(ctx, core, ox + hx * cell, oy + hy * cell, cell);
+  }
+
+  // 伤害显示叠加（怪物伤害 + 领域/阻击/激光）
+  drawDamageOverlay(ctx, fid, cell, ox, oy);
+
+  drawLabel(ctx, fid, cw, ch);
+}
+
+// 回退：色块 + 标记
+function renderFallback(ctx, fid, f, cw, ch) {
+  ctx.clearRect(0, 0, cw, ch);
+  ctx.fillStyle = "#0a0a16";
+  ctx.fillRect(0, 0, cw, ch);
+  if (!f || !f.map) {
+    ctx.fillStyle = "#e0e0e0";
+    ctx.font = "bold 18px sans-serif";
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(floorName(fid), cw / 2, ch / 2 - 12);
+    ctx.fillStyle = "#666";
+    ctx.font = "12px monospace";
+    ctx.fillText("(" + fid + ")", cw / 2, ch / 2 + 12);
+    return;
+  }
+  var map = f.map;
+  var mh = map.length, mw = map[0] ? map[0].length : 0;
+  var cell = Math.floor(Math.min(cw, ch) / Math.max(mw, mh));
+  var ox = Math.floor((cw - mw * cell) / 2);
+  var oy = Math.floor((ch - mh * cell) / 2);
+  for (var y = 0; y < mh; y++) {
+    for (var x = 0; x < mw; x++) {
+      var id = map[y] ? map[y][x] : 0;
+      ctx.fillStyle = bc(id);
+      ctx.fillRect(ox + x * cell, oy + y * cell, cell - 1, cell - 1);
+      if (BM[id]) {
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "bold " + Math.floor(cell * 0.5) + "px sans-serif";
+        ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.fillText(BM[id], ox + x * cell + cell / 2, oy + y * cell + cell / 2);
+      }
+    }
+  }
+  drawLabel(ctx, fid, cw, ch);
+}
+
+function drawLabel(ctx, fid, cw, ch) {
+  var label = floorName(fid) + "  (" + fid + ")";
+  ctx.fillStyle = "rgba(0,0,0,0.55)";
+  ctx.fillRect(0, ch - 26, cw, 26);
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "bold 14px 'PingFang SC','Microsoft YaHei',sans-serif";
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText(label, cw / 2, ch - 13);
+}
+
+function drawThumbnail(fid) {
+  var canvas = document.getElementById("thumbnail-canvas");
+  if (!canvas) return;
+  var ctx = canvas.getContext("2d");
+  var cw = canvas.width, ch = canvas.height;
+  var f = window.main.floors[fid];
+
+  var core = getParentCore();
+  if (core) renderRealFloor(ctx, fid, f, cw, ch);
+  else renderFallback(ctx, fid, f, cw, ch);
+
+  document.getElementById("face-name").textContent = floorName(fid);
+  document.getElementById("face-name").style.color = FACE_COLORS[fid] || "#f0f0f0";
+  document.getElementById("face-id").textContent = fid;
+  document.querySelectorAll(".face-btn").forEach(function (b) { b.classList.toggle("active", b.dataset.face === fid); });
+}
+
+// ============================================================
+// Three.js 3D 场景
+// ============================================================
+var container = document.getElementById("three-container");
+var scene = new THREE.Scene();
+var aspect = container.clientWidth / container.clientHeight || 1;
+var camera = new THREE.PerspectiveCamera(38, aspect, 0.1, 100);
+camera.position.set(3.6, 2.6, 4.6);
+
+var renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(container.clientWidth, container.clientHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setClearColor(0x0a0a14, 1);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.25;
+container.appendChild(renderer.domElement);
+
+var controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.minDistance = 2.2;
+controls.maxDistance = 14;
+controls.target.set(0, 0, 0);
+controls.update();
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.95));
+var dl = new THREE.DirectionalLight(0xfff2e0, 2.6);
+dl.position.set(5, 10, 7); dl.castShadow = true; scene.add(dl);
+var fl = new THREE.DirectionalLight(0xbfe0ff, 0.8); fl.position.set(-3, 1, -5); scene.add(fl);
+var rl = new THREE.DirectionalLight(0xbfe0ff, 0.55); rl.position.set(-2, -3, 4); scene.add(rl);
+
+var ring = new THREE.Mesh(new THREE.RingGeometry(0.3, 2.0, 48), new THREE.MeshBasicMaterial({ color: 0x224488, transparent: true, opacity: 0.1, side: THREE.DoubleSide, depthWrite: false }));
+ring.rotation.x = -Math.PI / 2; ring.position.y = -1.05; scene.add(ring);
+
+var cubeSize = 2;
+var faceGroup = new THREE.Group();
+scene.add(faceGroup);
+var faceMeshes = {};
+
+var faceConfigs = [
+  { id: "MT0", pos: [0, 0, 1], rot: [0, 0, 0] },
+  { id: "MT1", pos: [0, 0, -1], rot: [0, Math.PI, 0] },
+  { id: "MT2", pos: [-1, 0, 0], rot: [0, -Math.PI / 2, 0] },
+  { id: "MT3", pos: [1, 0, 0], rot: [0, Math.PI / 2, 0] },
+  { id: "MT4", pos: [0, 1, 0], rot: [-Math.PI / 2, 0, 0] },
+  { id: "MT5", pos: [0, -1, 0], rot: [Math.PI / 2, 0, 0] }
+];
+
+function buildFaceTexture(fid) {
+  var c = document.createElement("canvas");
+  c.width = 512; c.height = 512;
+  var ctx = c.getContext("2d");
+  ctx.imageSmoothingEnabled = false;
+  var f = window.main.floors[fid];
+  var core = getParentCore();
+  var map = getRealtimeMap(core, fid, f) || (f ? f.map : null);
+  if (map) {
+    var mh = map.length, mw = map[0] ? map[0].length : 0;
+    var cell = 512 / Math.max(mw, mh);
+    var groundInfo = core ? (core.getBlockInfo(f && f.defaultGround || "ground") || core.getBlockInfo(1)) : null;
+    for (var y = 0; y < mh; y++) {
+      for (var x = 0; x < mw; x++) {
+        var dx = Math.floor(x * cell), dy = Math.floor(y * cell), cs = Math.ceil(cell);
+        var id = map[y] ? map[y][x] : 0;
+        if (core) {
+          // 真实贴图：先铺地面，再画图块底部 32x32
+          if (groundInfo) drawGround(ctx, groundInfo, dx, dy, cs);
+          else { ctx.fillStyle = "#1a1a2e"; ctx.fillRect(dx, dy, cs, cs); }
+          if (id) {
+            var info = core.getBlockInfo(id);
+            if (info) drawBlockBottom(ctx, info, dx, dy, cs);
+          }
+        } else {
+          // 回退：色块
+          ctx.fillStyle = bc(id);
+          ctx.fillRect(dx, dy, cs, cs);
+        }
+      }
+    }
+    // 玩家（仅其所在楼层）
+    if (core && core.status && core.status.floorId === fid && core.status.hero) {
+      var hx = core.status.hero.loc.x, hy = core.status.hero.loc.y;
+      drawHero(ctx, core, Math.floor(hx * cell), Math.floor(hy * cell), Math.ceil(cell));
+    }
+    // 伤害显示叠加（怪物伤害 + 领域/阻击/激光）
+    if (core) drawDamageOverlay(ctx, fid, cell, 0, 0);
+    ctx.strokeStyle = "rgba(255,255,255,0.05)";
+    ctx.lineWidth = 1;
+    for (var gx = 0; gx <= mw; gx++) { ctx.beginPath(); ctx.moveTo(Math.floor(gx * cell), 0); ctx.lineTo(Math.floor(gx * cell), 512); ctx.stroke(); }
+    for (var gy = 0; gy <= mh; gy++) { ctx.beginPath(); ctx.moveTo(0, Math.floor(gy * cell)); ctx.lineTo(512, Math.floor(gy * cell)); ctx.stroke(); }
+  }
+  var grad = ctx.createLinearGradient(0, 420, 0, 512);
+  grad.addColorStop(0, "rgba(0,0,0,0)");
+  grad.addColorStop(0.3, "rgba(0,0,0,0.5)");
+  grad.addColorStop(1, "rgba(0,0,0,0.6)");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 420, 512, 92);
+  ctx.fillStyle = "#d0d8e8";
+  ctx.font = 'bold 34px "PingFang SC","Microsoft YaHei",sans-serif';
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.shadowColor = "rgba(0,0,0,0.5)"; ctx.shadowBlur = 6;
+  ctx.fillText(floorName(fid), 256, 464);
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = "rgba(255,255,255,0.12)";
+  ctx.font = '14px "Courier New",monospace';
+  ctx.fillText(fid, 256, 491);
+  var tex = new THREE.CanvasTexture(c);
+  tex.needsUpdate = true;
+  return tex;
+}
+
+var planeGeo = new THREE.PlaneGeometry(cubeSize, cubeSize);
+for (var i = 0; i < faceConfigs.length; i++) {
+  var cfg = faceConfigs[i];
+  var tex = buildFaceTexture(cfg.id);
+  var mat = new THREE.MeshStandardMaterial({ map: tex, color: 0xffffff, roughness: 0.35, metalness: 0.05, side: THREE.DoubleSide });
+  var mesh = new THREE.Mesh(planeGeo, mat);
+  mesh.position.set(cfg.pos[0], cfg.pos[1], cfg.pos[2]);
+  mesh.rotation.set(cfg.rot[0], cfg.rot[1], cfg.rot[2]);
+  mesh.castShadow = true; mesh.receiveShadow = true;
+  mesh.userData.floorId = cfg.id;
+  mesh.userData.isSelected = false;
+  faceGroup.add(mesh);
+  faceMeshes[cfg.id] = mesh;
+}
+
+faceGroup.add(new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(cubeSize, cubeSize, cubeSize)), new THREE.LineBasicMaterial({ color: 0x4488cc, transparent: true, opacity: 0.25 })));
+var hlBox = new THREE.Mesh(new THREE.BoxGeometry(cubeSize * 1.04, cubeSize * 1.04, cubeSize * 1.04), new THREE.MeshBasicMaterial({ color: 0x4488ff, transparent: true, opacity: 0.1, side: THREE.BackSide }));
+faceGroup.add(hlBox);
+
+// 星空背景
+var sp = new Float32Array(1200 * 3);
+for (var i = 0; i < 1200 * 3; i++) sp[i] = (Math.random() - 0.5) * 80;
+var sg = new THREE.BufferGeometry();
+sg.setAttribute("position", new THREE.BufferAttribute(sp, 3));
+scene.add(new THREE.Points(sg, new THREE.PointsMaterial({ color: 0x4466aa, size: 0.03, transparent: true, opacity: 0.4 })));
+
+// ============================================================
+// 交互
+// ============================================================
+var raycaster = new THREE.Raycaster();
+var pointer = new THREE.Vector2();
+var currentFace = null;
+
+function getFace(event) {
+  var rect = renderer.domElement.getBoundingClientRect();
+  pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(pointer, camera);
+  var meshes = Object.values(faceMeshes);
+  var is = raycaster.intersectObjects(meshes);
+  for (var j = 0; j < is.length; j++) {
+    if (is[j].object.userData && is[j].object.userData.floorId) return is[j].object.userData.floorId;
+  }
+  return null;
+}
+
+renderer.domElement.addEventListener("pointermove", function (e) {
+  var fid = getFace(e);
+  var keys = Object.keys(faceMeshes);
+  for (var fi = 0; fi < keys.length; fi++) {
+    var k = keys[fi];
+    if (k !== currentFace) {
+      faceMeshes[k].material.emissive = new THREE.Color(0x000000);
+      faceMeshes[k].material.emissiveIntensity = 0;
+    }
+  }
+  if (fid && fid !== currentFace) {
+    faceMeshes[fid].material.emissive = new THREE.Color(0x4488ff);
+    faceMeshes[fid].material.emissiveIntensity = 0.1;
+    renderer.domElement.style.cursor = "pointer";
+  } else {
+    renderer.domElement.style.cursor = "default";
+  }
+});
+
+renderer.domElement.addEventListener("click", function (e) {
+  var fid = getFace(e);
+  if (fid) window.selectFace(fid);
+});
+
+// ============================================================
+// selectFace
+// ============================================================
+window.selectFace = function (fid) {
+  if (currentFace === fid) return;
+  if (currentFace && faceMeshes[currentFace]) {
+    faceMeshes[currentFace].userData.isSelected = false;
+    faceMeshes[currentFace].material.emissive = new THREE.Color(0x000000);
+    faceMeshes[currentFace].material.emissiveIntensity = 0;
+  }
+  currentFace = fid;
+  faceMeshes[fid].userData.isSelected = true;
+  faceMeshes[fid].material.emissive = new THREE.Color(0x4488ff);
+  faceMeshes[fid].material.emissiveIntensity = 0.18;
+  drawThumbnail(fid);
+};
+
+window.renderThumbnail = drawThumbnail;
+
+// 重建所有立方体面的贴图（读取实时楼层状态），用于每次打开查看器时刷新
+function refreshAllFaces() {
+  for (var fi = 0; fi < FACE_ORDER.length; fi++) {
+    var fid = FACE_ORDER[fi];
+    var mesh = faceMeshes[fid];
+    if (!mesh) continue;
+    var newTex = buildFaceTexture(fid);
+    if (mesh.material.map && mesh.material.map.dispose) mesh.material.map.dispose();
+    mesh.material.map = newTex;
+    mesh.material.needsUpdate = true;
+  }
+}
+window.refreshCubeFaces = refreshAllFaces;
+
+// ============================================================
+// 地图伤害显示开关：控制 3D 立方体面与缩略图是否绘制各类地图伤害
+// ============================================================
+function updateDamageButtons() {
+  var opts = window._damageOpts || { master: true };
+  var btns = document.querySelectorAll("#damage-control .dc-btn");
+  for (var i = 0; i < btns.length; i++) {
+    var b = btns[i];
+    var t = b.dataset.type;
+    if (t === "master") {
+      b.classList.toggle("active", opts.master);
+    } else {
+      b.classList.toggle("active", !!opts.master && !!opts[t]);
+      b.classList.toggle("disabled", !opts.master);
+    }
+  }
+}
+
+window.toggleDamage = function (type) {
+  var opts = window._damageOpts;
+  if (type === "master") {
+    opts.master = !opts.master;
+  } else {
+    if (!opts.master) return; // 总开关关闭时，个体开关无效
+    opts[type] = !opts[type];
+  }
+  updateDamageButtons();
+  // 重绘左侧缩略图与 3D 立方体面贴图，使开关即时生效
+  if (currentFace) drawThumbnail(currentFace);
+  refreshAllFaces();
+};
+
+// 父窗口每次打开查看器时会发来刷新指令：重建 3D 贴图 + 缩略图，切到当前楼层
+window.addEventListener("message", function (e) {
+  if (!e.data || e.data.action !== "refreshCubeMap") return;
+  refreshAllFaces();
+  var fid = e.data.floor;
+  if (fid && faceMeshes[fid]) {
+    currentFace = null;
+    window.selectFace(fid);
+  } else {
+    drawThumbnail(currentFace);
+  }
+});
+
+function onResize() {
+  var w = container.clientWidth;
+  var h = container.clientHeight;
+  if (w === 0 || h === 0) return;
+  camera.aspect = w / h; camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+}
+window.addEventListener("resize", onResize);
+
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+  ring.rotation.z += 0.001;
+  renderer.render(scene, camera);
+}
+
+// ============================================================
+// 初始化：打开时默认显示玩家当前楼层
+// ============================================================
+document.getElementById("loading").classList.add("hidden");
+
+var params = new URLSearchParams(location.search);
+var startFace = params.get("floor");
+if (!startFace || !faceMeshes[startFace]) startFace = "MT0";
+
+faceMeshes[startFace].material.emissive = new THREE.Color(0x4488ff);
+faceMeshes[startFace].material.emissiveIntensity = 0.18;
+faceMeshes[startFace].userData.isSelected = true;
+currentFace = startFace;
+
+drawThumbnail(startFace);
+
+// 初始化地图伤害显示开关的按钮状态
+updateDamageButtons();
+
+// C / Esc 关闭（在 iframe 内时通知父窗口）
+window.addEventListener("keydown", function (e) {
+  if (e.key >= "1" && e.key <= "6") {
+    window.selectFace(FACE_ORDER[parseInt(e.key) - 1]);
+    return;
+  }
+  if (e.key === "Escape" || e.key === "Esc" || e.key === "c" || e.key === "C") {
+    if (window.parent !== window) {
+      window.parent.postMessage({ action: "closeCubeMap" }, "*");
+    } else {
+      window.close();
+    }
+  }
+});
+
+animate();
+</script>
 </body>
 </html>
