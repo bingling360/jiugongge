@@ -131,10 +131,53 @@
             return result;
         }
 
+        // 缓存：六面世界的 buildCheckBlock 结果只依赖怪物位置、英雄生命值、
+        // 各类开关 flag、以及是否携带避网护符，与英雄当前所在格子无关（夹击
+        // 虽用到 hero.hp，但 hero 在单次移动过程中 hp 不变）。之前每走一步都
+        // 全量重算激光/领域/追猎等几何遍历，正是 main 密集内容下移动卡顿的主因。
+        // 这里用“状态签名”做记忆化：签名不变时直接返回上次结果，跳过几何遍历。
+        var checkBlockCache = {};
+
+        function computeSignature(floorId) {
+            var parts = [floorId];
+            parts.push("amulet=" + (core.hasItem("amulet") ? 1 : 0));
+            parts.push("hp=" + (core.status.hero ? core.status.hero.hp : 0));
+            ["no_zone", "no_laser", "no_repulse", "no_ambush", "no_chase", "no_betweenAttack"].forEach(function (f) {
+                parts.push(f + "=" + (core.hasFlag(f) ? 1 : 0));
+            });
+            parts.push("betweenAttackMax=" + (core.flags && core.flags.betweenAttackMax ? 1 : 0));
+            CubeWorld.FACE_IDS.forEach(function (fid) {
+                var bs = getBlocks(fid);
+                for (var i = 0; i < bs.length; i++) {
+                    var b = bs[i];
+                    parts.push(fid + ":" + b.x + ":" + b.y + ":" + (b.event ? b.event.id : "?"));
+                    var en = getEnemy(b, fid);
+                    if (en) {
+                        parts.push("e=" + (en.special ? en.special.join(",") : "") + "|" +
+                            (en.range || 0) + "|" + (en.zoneSquare ? 1 : 0) + "|" +
+                            (en.zone || 0) + "|" + (en.laser || 0) + "|" + (en.repulse || 0));
+                    }
+                }
+            });
+            return parts.join("&");
+        }
+
         function buildCheckBlock(floorId) {
             floorId = floorId || core.status.floorId;
             if (!isFace(floorId) || !hasMaps() || !core.status.maps[floorId]) return null;
 
+            var signature = computeSignature(floorId);
+            var cached = checkBlockCache[floorId];
+            if (cached && cached.signature === signature) {
+                return cached.value;
+            }
+
+            var info = computeCheckBlock(floorId);
+            if (info) checkBlockCache[floorId] = { signature: signature, value: info };
+            return info;
+        }
+
+        function computeCheckBlock(floorId) {
             var info = {
                 damage: {}, type: {}, repulse: {}, ambush: {}, chase: {},
                 needCache: false, cache: {}
@@ -362,7 +405,16 @@
             if (!viewerOverlay || viewerOverlay.style.display === "none") return false;
             viewerOverlay.style.display = "none";
             viewerOverlay.setAttribute("aria-hidden", "true");
-            if (viewerFrame) viewerFrame.inert = true;
+            if (viewerFrame) {
+                viewerFrame.inert = true;
+                // 通知隐藏的查看器停止后台 WebGL 渲染循环，避免持续占用 GPU/CPU
+                // 造成游戏卡顿（cube-map-viewer.html 监听后 cancelAnimationFrame）。
+                try {
+                    if (viewerFrame.contentWindow) {
+                        viewerFrame.contentWindow.postMessage({ action: "stopCubeMap" }, "*");
+                    }
+                } catch (e) { /* 跨域或文档已销毁时忽略 */ }
+            }
             if (window.focus) window.focus();
             if (document.body && document.body.focus) document.body.focus();
             return true;
@@ -1446,6 +1498,174 @@
             if (isFace(floorId)) return buildCheckBlock(floorId);
             return originalGetCheckBlock.call(this, floorId);
         };
+
+        // 显伤缓存：主引擎每走一步都会对当前层全部 block 重算显伤字符串
+        //（enemy 的 damage/atk/def 等，见 control.prototype.updateDamage），
+        // 在 150+ 个 block 的密集内容上每步约 250ms，是“移动卡顿”的主因。
+        // 这些显伤字符串只在敌人位置/属性、英雄生命/防御/攻击、镜头、显伤开关、
+        // 以及跨面光环来源变化时改变，普通行走中都不变化。故用状态签名记忆化：
+        // 签名不变且画布未被外部重置时，直接复用上次数据、跳过整层字符串重算。
+        var damageCache = { signature: null, data: null, extraData: null };
+        // 重入保护：updateDamage 内部会再调用 drawDamage，避免两者相互触发导致递归重算。
+        var inUpdateDamage = false;
+
+        // 单个敌人的显伤相关属性（含光环加成属性）
+        function enemyDamageProps(b) {
+            return b.x + ":" + b.y + ":" + b.event.id + ":" +
+                (b.event.atk || 0) + ":" + (b.event.def || 0) + ":" +
+                (b.event.hp || 0) + ":" + (b.event.critical || 0) + ":" +
+                (b.event.range || 0) + ":" + (b.event.special || "") + ":" +
+                (b.event.hpBuff || 0) + ":" + (b.event.atkBuff || 0) + ":" +
+                (b.event.defBuff || 0) + ":" + (b.event.haloRange || "") + ":" +
+                (b.event.haloSquare || 0);
+        }
+
+        // 跨面光环：其它层的光环来源敌人(特技25/26)会改变本层显伤，必须纳入签名，
+        // 否则光环变化时显伤会“残留”陈旧数值。本层光环已由 blocks 签名覆盖，故跳过。
+        function computeAuraSignature(floorId) {
+            var hasAura = false, parts = [];
+            CubeWorld.FACE_IDS.forEach(function (fid) {
+                if (fid === floorId) return;
+                var blocks = (core.status.maps[fid] && core.status.maps[fid].blocks) || [];
+                for (var i = 0; i < blocks.length; i++) {
+                    var b = blocks[i];
+                    if (b.disable || b.event.cls.indexOf("enemy") !== 0) continue;
+                    if (!core.hasSpecial(b.event.special, 25) && !core.hasSpecial(b.event.special, 26)) continue;
+                    hasAura = true;
+                    parts.push(fid + ":" + enemyDamageProps(b));
+                }
+            });
+            return hasAura ? parts.join(",") : "none";
+        }
+
+        function computeDamageSignature(floorId) {
+            var parts = [floorId];
+            parts.push("book=" + (core.hasItem("book") ? 1 : 0));
+            // 仅大地图(v2)视口裁剪时显伤才随镜头变化；小图镜头固定，忽略以免误失效缓存
+            if (core.bigmap.v2) parts.push("pos=" + core.bigmap.posX + "," + core.bigmap.posY);
+            var hero = core.status.hero;
+            // 显伤颜色随英雄当前生命在阈值(hp/3、2hp/3、hp)间变化（enemys.js getDamageString），
+            // 故必须纳入签名；否则捡血瓶/受治疗后颜色会“残留”旧值，直到打怪才刷新。
+            parts.push("hero=" + (hero ? (hero.hp + "|" + hero.def + "|" + hero.atk) : "none"));
+            ["displayEnemyDamage", "displayExtraDamage", "displayCritical", "extraDamageType"].forEach(function (f) {
+                parts.push(f + "=" + (core.hasFlag(f) ? 1 : 0));
+            });
+            parts.push("displayData=" + JSON.stringify(core.getLocalStorage("displayData", {})));
+            parts.push("specialIcon=" + JSON.stringify(core.getLocalStorage("specialIconData", {})));
+            var blocks = (core.status.maps[floorId] && core.status.maps[floorId].blocks) || [];
+            var blockSig = [];
+            for (var i = 0; i < blocks.length; i++) {
+                var b = blocks[i];
+                if (b.disable || b.event.cls.indexOf("enemy") !== 0) continue;
+                blockSig.push(enemyDamageProps(b));
+            }
+            parts.push("blocks=" + blockSig.join(","));
+            parts.push("aura=" + computeAuraSignature(floorId));
+            return parts.join("&");
+        }
+
+        if (typeof core.updateDamage === "function") {
+            var originalUpdateDamage = core.updateDamage;
+            core.updateDamage = function (floorId, ctx) {
+                floorId = floorId || core.status.floorId;
+                // 小地图(ctx)按需走原逻辑，不缓存
+                if (ctx) return originalUpdateDamage.call(core, floorId, ctx);
+                var sig = computeDamageSignature(floorId);
+                var stale = damageCache.signature !== sig;
+                // 引擎可能在外部重置/替换 core.status.damage（例如读档、切换存档），
+                // 此时即便签名“看似”未变也要重算，否则显伤会消失或显示陈旧引用，
+                // 直到打怪才重新出现。
+                var externallyReset = !stale && damageCache.data && core.status.damage.data !== damageCache.data;
+                if (!stale && !externallyReset) {
+                    // 状态未变且画布未被外部重置：显伤层(core.canvas.damage)是独立画布，
+                    // 随整图投影一起变换，外部不会清空它，直接复用上次数据即可。
+                    return;
+                }
+                inUpdateDamage = true;
+                try {
+                    var result = originalUpdateDamage.call(core, floorId, ctx);
+                } finally {
+                    inUpdateDamage = false;
+                }
+                damageCache.signature = sig;
+                damageCache.data = core.status.damage.data;
+                damageCache.extraData = core.status.damage.extraData;
+                return result;
+            };
+        }
+
+        // redrawMap → core.drawDamage 会清空显伤画布并按 core.status.damage.data 重绘。
+        // 读档时引擎重建 core.status，把 core.status.damage.data 换成新的空数组，但读档链路
+        // 【不会调用 updateDamage】，故显伤画布会一直空白，直到打怪才出现。此处补一道保险：
+        // 在 drawDamage（读档必经路径）检测到显伤数据被外部清空/替换时，立即重算并重绘。
+        if (typeof core.control.drawDamage === "function") {
+            var originalDrawDamage = core.control.drawDamage;
+            core.control.drawDamage = function (ctx) {
+                // 仅主地图(onMap)需要；小地图(ctx)与重算递归中走原逻辑
+                if (ctx == null && !inUpdateDamage && core.status.floorId &&
+                    core.status.maps[core.status.floorId]) {
+                    var floorId = core.status.floorId;
+                    var shouldShow = core.hasItem("book") &&
+                        (core.flags.displayEnemyDamage || core.flags.displayExtraDamage);
+                    if (shouldShow) {
+                        // 情形1：core.status.damage.data 引用被外部替换（读档/切档后新空数组）
+                        var externallyReset = core.status.damage && damageCache.data &&
+                            core.status.damage.data !== damageCache.data;
+                        // 情形2：数据为空但本层确有敌人（读档复用同一引用并清空数组）
+                        var hasEnemies = false;
+                        if (!externallyReset) {
+                            var blocks = core.status.maps[floorId].blocks || [];
+                            for (var i = 0; i < blocks.length; i++) {
+                                var b = blocks[i];
+                                if (!b.disable && b.event.cls.indexOf("enemy") === 0) { hasEnemies = true; break; }
+                            }
+                        }
+                        var dataEmpty = !core.status.damage || core.status.damage.data.length === 0;
+                        if (externallyReset || (dataEmpty && hasEnemies)) {
+                            inUpdateDamage = true;
+                            try {
+                                // 重算并绘制（updateDamage 末尾会再调 drawDamage，已被 guard 拦截）
+                                originalUpdateDamage.call(core, floorId, null);
+                            } finally {
+                                inUpdateDamage = false;
+                            }
+                            // 同步缓存：否则后续普通重绘会一直判定 data 引用不一致而每步误重算
+                            damageCache.signature = computeDamageSignature(floorId);
+                            damageCache.data = core.status.damage.data;
+                            damageCache.extraData = core.status.damage.extraData;
+                            return;
+                        }
+                    }
+                }
+                return originalDrawDamage.apply(this, arguments);
+            };
+        }
+
+        // 读档/回放收尾：loadData 内部 changeFloor 会重建楼层画布，但【不会重绘显伤层】，
+        // 导致读档后显伤画布空白、必须等下一次操作触发 redrawMap 才出现。此处读档完成后
+        // 立即主动重算并重绘显伤，使显伤在读档瞬间就显示。
+        if (core.control.controldata && typeof core.control.controldata.loadData === "function") {
+            var originalLoadData = core.control.controldata.loadData;
+            core.control.controldata.loadData = function (data, callback) {
+                return originalLoadData.call(this, data, function () {
+                    try {
+                        if (typeof callback === "function") callback.apply(this, arguments);
+                    } finally {
+                        if (core.status.floorId && core.status.maps[core.status.floorId]) {
+                            // 清空缓存签名，强制 updateDamage 重算（否则签名一致会直接复用旧画布）
+                            damageCache.signature = null;
+                            damageCache.data = null;
+                            inUpdateDamage = true;
+                            try {
+                                core.updateDamage(core.status.floorId);
+                            } finally {
+                                inUpdateDamage = false;
+                            }
+                        }
+                    }
+                });
+            };
+        }
 
         var originalEnemyInfo = core.enemys.enemydata.getEnemyInfo;
         core.enemys.enemydata.getEnemyInfo = function (enemy, hero, x, y, floorId) {
