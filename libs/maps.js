@@ -2213,6 +2213,11 @@ maps.prototype._removeBlockFromMap = function (floorId, block) {
 
 ////// 删除某个图块 //////
 maps.prototype.removeBlock = function (x, y, floorId) {
+    // 跨层触发事件中的移除默认作用于被触发事件所在的楼层
+    if (!floorId && core.status.event && core.status.event.id == 'action' && core.status.event.data
+        && core.status.event.data.floorId && core.status.event.data.floorId !== core.status.floorId) {
+        floorId = core.status.event.data.floorId;
+    }
     floorId = floorId || core.status.floorId;
     if (!floorId) return false;
 

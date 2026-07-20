@@ -726,8 +726,20 @@ function onResize() {
 }
 window.addEventListener("resize", onResize);
 
+// 父窗口（cube-runtime）关闭查看器时会发来 stopCubeMap，需要真正停止
+// requestAnimationFrame 循环。否则隐藏的 iframe 仍在后台跑 WebGL 渲染，
+// 持续占用 GPU/CPU 导致游戏卡顿。
+var animationId = null;
+window.addEventListener("message", function (e) {
+  var data = e.data || {};
+  if (data.action === "stopCubeMap" && animationId != null) {
+    cancelAnimationFrame(animationId);
+    animationId = null;
+  }
+});
+
 function animate() {
-  requestAnimationFrame(animate);
+  animationId = requestAnimationFrame(animate);
   controls.update();
   ring.rotation.z += 0.001;
   renderer.render(scene, camera);

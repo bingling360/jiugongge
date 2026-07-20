@@ -545,7 +545,7 @@ var data_a1e2fb4a_e986_4524_b0da_9b7ba7c0874d =
 			{
 				"type": "setValue",
 				"name": "item:yellowKey",
-				"value": "2"
+				"value": "3"
 			},
 			{
 				"type": "setValue",

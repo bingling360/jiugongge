@@ -271,7 +271,7 @@
       else if (window.core && window.core.openKeyBoard) window.core.openKeyBoard(true);
     };
 
-    if (window.core.control && window.core.control.registerResize) {
+    if (window.core && window.core.control && window.core.control.registerResize) {
       window.core.control.registerResize('dpadPanel', function () { apply(); });
     }
     window.addEventListener('resize', apply);

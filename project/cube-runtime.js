@@ -437,8 +437,9 @@
         }
 
         function getViewQuarter() {
-            if (!core.status || !core.status.hero) return 0;
-            return CubeWorld.normalizeQuarter(core.getFlag(VIEW_QUARTER_FLAG, 0));
+            // 已去除跨面视图旋转：无论存档中残留的朝向标记为何，画面始终
+            // 以规范朝向（quarter=0）显示，所有坐标/方向换算保持恒等。
+            return 0;
         }
 
         function storeViewQuarter(quarter) {
@@ -1090,9 +1091,9 @@
         }
 
         function prepareCrossView(sourceDirection, targetDirection) {
-            pendingViewQuarter = CubeWorld.viewQuarterAfterCross(
-                getViewQuarter(), sourceDirection, targetDirection
-            );
+            // 已去除跨面视图旋转：进入新面后不再随跨越的边旋转画面，始终
+            // 回到规范朝向。
+            pendingViewQuarter = 0;
             return pendingViewQuarter;
         }
 

@@ -1074,12 +1074,24 @@ control.prototype.moveViewport = function (x, y, moveMode, time, callback) {
 ////// 获得勇士面对位置的x坐标 //////
 control.prototype.nextX = function (n) {
     if (n == null) n = 1;
+    // 跨层触发事件时，被触发事件所处的点坐标即为交互目标点
+    if (core.status.event && core.status.event.id == 'action' && core.status.event.data
+        && core.status.event.data.floorId != null && core.status.event.data.floorId !== core.status.floorId
+        && core.status.event.data.x != null) {
+        return core.status.event.data.x;
+    }
     return core.getHeroLoc('x') + core.utils.scan[core.getHeroLoc('direction')].x * n;
 }
 
 ////// 获得勇士面对位置的y坐标 //////
 control.prototype.nextY = function (n) {
     if (n == null) n = 1;
+    // 跨层触发事件时，被触发事件所处的点坐标即为交互目标点
+    if (core.status.event && core.status.event.id == 'action' && core.status.event.data
+        && core.status.event.data.floorId != null && core.status.event.data.floorId !== core.status.floorId
+        && core.status.event.data.y != null) {
+        return core.status.event.data.y;
+    }
     return core.getHeroLoc('y') + core.utils.scan[core.getHeroLoc('direction')].y * n;
 }
 

@@ -12,7 +12,7 @@ module.exports = defineConfig({
     trace: "retain-on-failure"
   },
   webServer: {
-    command: "python3 tests/e2e/server.py",
+    command: "python3 tests/e2e/server.py || python tests/e2e/server.py",
     url: "http://127.0.0.1:3000",
     reuseExistingServer: true,
     timeout: 30_000

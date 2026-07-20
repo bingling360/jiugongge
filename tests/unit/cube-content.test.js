@@ -144,16 +144,18 @@ test("六面静态通路连通，机关外敌人可达且开门后中央奖励�
     }
 });
 
-test("3D 查看器没有隐藏后仍运行的帧循环，并提供六面与关闭入口", () => {
+test("3D 查看器有旋转帧循环，但隐藏时由父窗口停止", () => {
     const html = fs.readFileSync(path.join(root, "cube-map-viewer.html"), "utf8");
-    assert.doesNotMatch(html, /requestAnimationFrame/);
-    assert.doesNotMatch(html, /Math\.max\(-90|Math\.min\(90/);
-    assert.match(html, /perspective:\s*none/);
-    assert.match(html, /backface-visibility:\s*hidden/);
-    assert.match(html, /multiplyQuaternion/);
-    assert.match(html, /scale3d\(/);
-    assert.doesNotMatch(html, /transition:\s*transform/);
-    for (let index = 0; index < 6; index++) assert.match(html, new RegExp(`data-floor="MT${index}"`));
-    assert.match(html, /Esc \/ C 关闭/);
-    assert.match(html, /CubeViewer/);
+    // 保留 e9e5985 的 WebGL 3D 旋转版：渲染循环使用 requestAnimationFrame
+    assert.match(html, /requestAnimationFrame/);
+    // 关闭查看器时必须真正取消循环，避免隐藏的 iframe 仍在后台跑 WebGL 渲染
+    assert.match(html, /cancelAnimationFrame/);
+    assert.match(html, /addEventListener\(["']message["']/);
+    assert.match(html, /stopCubeMap/);
+    // 父窗口 closeViewer 负责发送停止信号
+    const runtime = fs.readFileSync(path.join(root, "project", "cube-runtime.js"), "utf8");
+    assert.match(runtime, /postMessage\(\{\s*action:\s*["']stopCubeMap["']/);
+    // 提供六面入口与关闭入口
+    assert.match(html, /FACE_ORDER/);
+    assert.match(html, /closeCubeMap/);
 });

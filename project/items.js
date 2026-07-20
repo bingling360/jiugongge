@@ -194,18 +194,11 @@ var items_296f5d02_12fd_4166_a7c1_b5e830c9ee3a =
 		"itemEffectTip": "，攻击+0"
 	},
 	"sword1": {
-		"cls": "equips",
+		"cls": "items",
 		"name": "铁剑",
 		"text": "一把很普通的铁剑",
-		"equip": {
-			"type": 0,
-			"animate": "sword",
-			"value": {
-				"atk": 10
-			}
-		},
-		"itemEffect": "core.status.hero.atk += 10",
-		"itemEffectTip": "，攻击+10"
+		"itemEffect": "core.status.hero.atk += 3",
+		"itemEffectTip": "，攻击+3"
 	},
 	"sword2": {
 		"cls": "equips",
@@ -277,17 +270,11 @@ var items_296f5d02_12fd_4166_a7c1_b5e830c9ee3a =
 		"itemEffectTip": "，防御+0"
 	},
 	"shield1": {
-		"cls": "equips",
+		"cls": "items",
 		"name": "铁盾",
 		"text": "一个很普通的铁盾",
-		"equip": {
-			"type": 1,
-			"value": {
-				"def": 10
-			}
-		},
-		"itemEffect": "core.status.hero.def += 10",
-		"itemEffectTip": "，防御+10"
+		"itemEffect": "core.status.hero.def += 3",
+		"itemEffectTip": "，防御+3"
 	},
 	"shield2": {
 		"cls": "equips",
