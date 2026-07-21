@@ -407,7 +407,7 @@ p#name {
     position: fixed;
     left: 50%;
     transform: translateX(-50%);
-    bottom: 56px;
+    bottom: 44px;
     z-index: 240;
     display: none;
     flex-direction: row;

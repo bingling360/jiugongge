@@ -48,10 +48,17 @@
   .dc-btn[data-type="master"] { color: #aa88ff; }
   .dc-btn[data-type="master"].active { background: #241433; color: #c9a3ff; border-color: #4a2a5a; box-shadow: 0 0 6px rgba(160,110,255,0.15); }
   .dc-btn.disabled { opacity: 0.3; cursor: not-allowed; pointer-events: none; }
+  /* 关闭按钮：手机端（无键盘）用于关闭 3D 地图查看器，固定在右上角 */
+  #cube-close { position: fixed; top: max(12px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); z-index: 10000; width: 44px; height: 44px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.4); background: rgba(15,23,42,0.82); color: #fff; font-size: 22px; line-height: 1; display: none; align-items: center; justify-content: center; cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent; box-shadow: 0 3px 14px rgba(0,0,0,0.4); }
+  #cube-close:active { background: #2563eb; transform: scale(0.94); }
+  @media (pointer:coarse),(max-width:760px){ #cube-close{ display:flex; } }
+
 </style>
 </head>
 <body>
 <div id="loading"><div class="spinner"></div><p>加载 3D 场景...</p></div>
+<button id="cube-close" aria-label="关闭 3D 地图" title="关闭">✕</button>
+
 <div id="app">
   <div id="panel-left">
     <div id="panel-header"><h2>当前面</h2></div>
@@ -784,6 +791,18 @@ drawThumbnail(startFace);
 
 // 初始化地图伤害显示开关的按钮状态
 updateDamageButtons();
+
+// 关闭按钮（手机端）：点击后通知父窗口关闭 3D 地图查看器
+var closeBtn = document.getElementById("cube-close");
+if (closeBtn) {
+  closeBtn.addEventListener("click", function () {
+    if (window.parent !== window) {
+      window.parent.postMessage({ action: "closeCubeMap" }, "*");
+    } else {
+      window.close();
+    }
+  });
+}
 
 // C / Esc 关闭（在 iframe 内时通知父窗口）
 window.addEventListener("keydown", function (e) {

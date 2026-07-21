@@ -90,7 +90,7 @@ var maps_90f36752_8815_4be8_b32b_d7fad1d0542e =
 	"121": {"cls":"npcs","id":"man","name":"伯伯","event":[{"type":"if","condition":"(status:atk >= 10)","true":[{"type":"choices","text":"伯伯：要加6防、减10攻吗？","choices":[{"text":"同意","action":[{"type":"setValue","name":"status:def","operator":"+=","value":"6"},{"type":"setValue","name":"status:atk","operator":"-=","value":"10"},{"type":"function","function":"function(){\ncore.removeBlock(core.nextX(), core.nextY());\n}"},{"type":"tip","text":"交易成功！防御+6，攻击-10"}]},{"text":"不同意","action":[]}]}],"false":[{"type":"tip","text":"攻击不足，无法交易"}]}]},
 	"122": {"cls":"npcs","id":"trader","name":"商人","event":[{"type":"if","condition":"(status:def >= 10)","true":[{"type":"choices","text":"商人：要加6攻、减10防吗？","choices":[{"text":"同意","action":[{"type":"setValue","name":"status:atk","operator":"+=","value":"6"},{"type":"setValue","name":"status:def","operator":"-=","value":"10"},{"type":"function","function":"function(){\ncore.removeBlock(core.nextX(), core.nextY());\n}"},{"type":"tip","text":"交易成功！攻击+6，防御-10"}]},{"text":"不同意","action":[]}]}],"false":[{"type":"tip","text":"防御不足，无法交易"}]}]},
 	"123": {"cls":"npcs","id":"thief"},
-	"124": {"cls":"npcs","id":"fairy"},
+	"124": {"cls":"npcs","id":"fairy","name":"仙子","event":[{"type":"setValue","name":"item:redWand","value":"1"},{"type":"choices","text":"实验性功能：跨面旋转功能可能会出现 bug，是否要开启？开启后跨面移动时画面会随之旋转。","choices":[{"text":"开启","action":[{"type":"function","function":"function(){\nif (core.plugin.cubeWorld && core.plugin.cubeWorld.setCrossViewRotationEnabled) {\n\t\tcore.plugin.cubeWorld.setCrossViewRotationEnabled(true);\n\t}\n}"}]},{"text":"不开启","action":[{"type":"function","function":"function(){\nif (core.plugin.cubeWorld && core.plugin.cubeWorld.setCrossViewRotationEnabled) {\n\t\tcore.plugin.cubeWorld.setCrossViewRotationEnabled(false);\n\t}\n}"}]}]},{"type":"function","function":"function(){\ncore.removeBlock(core.nextX(), core.nextY());\n}"}]},
 	"125": {"cls":"npcs","id":"wizard"},
 	"126": {"cls":"npcs","id":"recluse"},
 	"127": {"cls":"npcs","id":"king"},
@@ -236,5 +236,6 @@ var maps_90f36752_8815_4be8_b32b_d7fad1d0542e =
 	"340": {"cls":"items","id":"orb"},
 	"341": {"cls":"items","id":"bentWand"},
 	"342": {"cls":"items","id":"crossChest"},
-	"343": {"cls":"items","id":"postman"}
+	"343": {"cls":"items","id":"postman"},
+	"344": {"cls":"items","id":"hyperCube"}
 }

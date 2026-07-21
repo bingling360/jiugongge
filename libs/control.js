@@ -1634,6 +1634,8 @@ control.prototype.triggerReplay = function () {
 ////// 暂停播放 //////
 control.prototype.pauseReplay = function () {
     if (!core.isPlaying() || !core.isReplaying()) return;
+    this._resumePending = false;
+    clearTimeout(this._resumeReplayTimer);
     core.status.replay.pausing = true;
     core.updateStatusBar(false, true);
     core.drawTip("暂停播放");
@@ -1643,9 +1645,26 @@ control.prototype.pauseReplay = function () {
 control.prototype.resumeReplay = function () {
     if (!core.isPlaying() || !core.isReplaying()) return;
     if (core.isMoving() || core.status.replay.animate || core.status.event.id) {
-        core.playSound('操作失败');
-        return core.drawTip("请等待当前事件的处理结束");
+        // 当前仍有动画或事件正在处理（例如首屏 choices 事件触发后的过场动画），
+        // 此时若直接放弃会导致玩家仅点一次“播放”而回放从未开始、录像卡死。
+        // 改为持续自动重试，直到阻塞解除（或被用户手动暂停）再恢复回放。
+        var self = this;
+        this._resumePending = true;
+        clearTimeout(this._resumeReplayTimer);
+        var retryResume = function () {
+            if (!self._resumePending) return;
+            if (core.isReplaying() && !core.status.replay.failed
+                && !core.isMoving() && !core.status.replay.animate && !core.status.event.id) {
+                self.resumeReplay();
+            } else {
+                self._resumeReplayTimer = setTimeout(retryResume, 100);
+            }
+        };
+        this._resumeReplayTimer = setTimeout(retryResume, 100);
+        return;
     }
+    this._resumePending = false;
+    clearTimeout(this._resumeReplayTimer);
     core.status.replay.pausing = false;
     core.updateStatusBar(false, true);
     core.drawTip("恢复播放");
@@ -1872,6 +1891,37 @@ control.prototype.replay = function (force) {
         return this._replay_finished();
     this._replay_save();
     var action = core.status.replay.toReplay.shift();
+    // choices:/random: 为数值型操作，由对应的“选项/随机”事件消费，
+    // 回放主循环绝不能抢先消费它们（否则会与事件争抢同一队列，导致操作错位、
+    // 弹出“录像回放出错”修复框甚至原生 prompt 卡死）。
+    // 遇到这类操作时放回队列，等待事件消费后再继续推进回放。
+    if (action.indexOf('choices:') == 0 || action.indexOf('random:') == 0) {
+        core.status.replay.toReplay.unshift(action);
+        if (!core.status.replay.waitingValue) {
+            core.status.replay.waitingValue = true;
+            var delay = core.status.replay.speed == 24 ? 0 : Math.max(20, (core.delayTime || 200) / core.status.replay.speed);
+            var waitValue = function () {
+                if (!core.isReplaying() || core.status.replay.pausing || core.status.replay.failed) {
+                    core.status.replay.waitingValue = false;
+                    return;
+                }
+                // 事件已消费该数值型操作，队列头已变为驱动型操作
+                if (core.status.replay.toReplay[0] != action) {
+                    core.status.replay.waitingValue = false;
+                    core.control.replay();
+                } else if (core.status.event.id) {
+                    // 事件正在处理中，继续等待其消费
+                    setTimeout(waitValue, delay);
+                } else {
+                    // 当前无事件处理，稍后重试（事件可能尚未触发）
+                    setTimeout(waitValue, delay);
+                }
+            };
+            setTimeout(waitValue, delay);
+        }
+        return;
+    }
+    core.status.replay.waitingValue = false;
     if (this._doReplayAction(action)) return;
     this._replay_error(action);
 }
@@ -2199,8 +2249,10 @@ control.prototype._replayAction_click = function (action) {
 }
 
 control.prototype._replayAction_ignoreInput = function (action) {
-    if (action.indexOf('input:') == 0 || action.indexOf('input2:') == 0 || action.indexOf('choices:') == 0 || action.indexOf('random:') == 0) {
-        console.warn('警告！录像播放中出现了未知的 ' + action + '！');
+    // 文本输入类操作（input:/input2:）在录像中无法自动填充，回放时应忽略，
+    // 不作为有效操作消费。注意 choices:/random: 是数值型操作，由对应事件消费，
+    // 绝不能在此抢消费——core.replay 已专门处理，避免与事件争抢 toReplay 队列。
+    if (action.indexOf('input:') == 0 || action.indexOf('input2:') == 0) {
         core.replay();
         return true;
     }
@@ -3404,7 +3456,7 @@ control.prototype.clearStatusBar = function () {
     })
     core.statusBar.image.book.style.opacity = 0.3;
     if (!core.flags.equipboxButton)
-        core.statusBar.image.fly.style.opacity = 0.3;
+        core.statusBar.image.fly.style.opacity = 1;
 }
 
 ////// 更新状态栏 //////
@@ -3432,7 +3484,8 @@ control.prototype._updateStatusBar_setToolboxIcon = function () {
         main.statusBar.image.play.src = core.status.replay.pausing ? core.statusBar.icons.play.src : core.statusBar.icons.pause.src;
     }
     core.statusBar.image.book.style.opacity = core.hasItem('book') ? 1 : 0.3;
-    core.statusBar.image.fly.style.opacity = core.hasItem('fly') ? 1 : 0.3;
+    // 立方体(3D地图)按钮始终可用，不再按"是否持有楼传"变暗
+    core.statusBar.image.fly.style.opacity = 1;
     core.statusBar.image.undoRollback.style.opacity =
         (core.saves.autosave.data != null && core.saves.autosave.now < core.saves.autosave.data.length) ? 1 : 0.3;
     core.statusBar.image.save.style.opacity = core.hasFlag('__forbidSave__') ? 0.3 : 1;

@@ -390,6 +390,11 @@
             if (!viewerOverlay || !core.status || !core.status.played || !isFace(core.status.floorId)) return false;
             viewerOverlay.style.display = "block";
             viewerOverlay.setAttribute("aria-hidden", "false");
+            // 仅在触屏/小屏设备上，于查看器内显示移动方向键（不占用主游戏界面）
+            var pad = document.getElementById("cube-mobile-pad");
+            if (pad && window.matchMedia && window.matchMedia("(pointer:coarse),(max-width:760px)").matches) {
+                pad.style.display = "grid";
+            }
             if (!viewerFrame.parentNode) viewerOverlay.appendChild(viewerFrame);
             viewerFrame.inert = false;
             // 查看器是独立 iframe；关闭后复用旧文档会让开发期间修改过的
@@ -405,6 +410,8 @@
             if (!viewerOverlay || viewerOverlay.style.display === "none") return false;
             viewerOverlay.style.display = "none";
             viewerOverlay.setAttribute("aria-hidden", "true");
+            var pad = document.getElementById("cube-mobile-pad");
+            if (pad) pad.style.display = "none";
             if (viewerFrame) {
                 viewerFrame.inert = true;
                 // 通知隐藏的查看器停止后台 WebGL 渲染循环，避免持续占用 GPU/CPU
@@ -1239,11 +1246,10 @@
             var style = document.createElement("style");
             style.textContent = "#cube-world-overlay{position:fixed;inset:0;z-index:2147483000;background:#05070c;display:none}" +
                 "#cube-world-frame{width:100%;height:100%;border:0;display:block}" +
-                "#cube-mobile-pad{position:fixed;z-index:2147482000;right:max(14px,env(safe-area-inset-right));bottom:max(14px,env(safe-area-inset-bottom));display:none;grid-template-columns:52px 52px 52px;grid-template-rows:52px 52px 52px;gap:5px;touch-action:none;user-select:none}" +
+                "#cube-mobile-pad{position:fixed;z-index:2147484000;right:max(14px,env(safe-area-inset-right));bottom:max(14px,env(safe-area-inset-bottom));display:none;grid-template-columns:52px 52px 52px;grid-template-rows:52px 52px 52px;gap:5px;touch-action:none;user-select:none}" +
                 "#cube-mobile-pad button{border:1px solid rgba(255,255,255,.55);border-radius:14px;background:rgba(15,23,42,.78);color:#fff;font-size:25px;box-shadow:0 3px 14px rgba(0,0,0,.35);-webkit-tap-highlight-color:transparent}" +
                 "#cube-mobile-pad button:active{background:#2563eb;transform:scale(.94)}" +
-                "#cube-mobile-pad [data-dir=up]{grid-column:2;grid-row:1}#cube-mobile-pad [data-dir=left]{grid-column:1;grid-row:2}#cube-mobile-pad [data-dir=right]{grid-column:3;grid-row:2}#cube-mobile-pad [data-dir=down]{grid-column:2;grid-row:3}" +
-                "@media (pointer:coarse),(max-width:760px){#cube-mobile-pad{display:grid}}";
+                "#cube-mobile-pad [data-dir=up]{grid-column:2;grid-row:1}#cube-mobile-pad [data-dir=left]{grid-column:1;grid-row:2}#cube-mobile-pad [data-dir=right]{grid-column:3;grid-row:2}#cube-mobile-pad [data-dir=down]{grid-column:2;grid-row:3}";
             document.head.appendChild(style);
 
             viewerOverlay = document.createElement("div");
@@ -1323,19 +1329,19 @@
                 }
             });
 
-            // 按需求：状态栏 fly(楼传) 位置换成「传送门」素材图片，但保留点击打开 3D 地图的功能。
-            // 传送门素材 = 图块 id 为 "portal" 的 animate，对应 animates 图集（core.material.images['animates']）
-            // 中 icons.js → animates.portal 所指向的 tile（index=17），32×32 与其他状态栏图标同尺寸。
+            // 按需求：状态栏 fly(楼传) 位置换成「立体方块」素材图片，但保留点击打开 3D 地图的功能。
+            // 立方体素材 = 图块 id 为 "hyperCube" 的 item，对应 items 图集（core.material.images['items']）
+            // 中 icons.js → items.hyperCube 所指向的 tile（index=64），32×32 与其他状态栏图标同尺寸。
             var flyIcon = core.statusBar && core.statusBar.image && core.statusBar.image.fly;
             if (flyIcon) {
-                var animatesImg = core.material.images["animates"];
-                if (animatesImg) {
-                    var portalIndex = (core.icons && core.icons.animates
-                        && typeof core.icons.animates.portal === "number")
-                        ? core.icons.animates.portal : 17;
-                    var portalTile = core.splitImage(animatesImg)[portalIndex];
-                    if (portalTile && portalTile.src) {
-                        flyIcon.src = portalTile.src;
+                var itemsImg = core.material.images["items"];
+                if (itemsImg) {
+                    var cubeIndex = (core.icons && core.icons.items
+                        && typeof core.icons.items.hyperCube === "number")
+                        ? core.icons.items.hyperCube : 64;
+                    var cubeTile = core.splitImage(itemsImg)[cubeIndex];
+                    if (cubeTile && cubeTile.src) {
+                        flyIcon.src = cubeTile.src;
                     }
                 }
                 flyIcon.title = "六面总览（C）";

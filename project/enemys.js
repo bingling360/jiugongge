@@ -75,7 +75,7 @@ var enemys_fcae963b_31c9_42b4_b48c_bb48d09f3f80 =
 	"redKing": {"name":"红衣魔王","hp":0,"atk":0,"def":0,"money":0,"exp":0,"point":0,"special":0},
 	"blueKing": {"name":"白衣武士","hp":0,"atk":0,"def":0,"money":0,"exp":0,"point":0,"special":[]},
 	"keiskeiFairy": {"name":"铃兰花妖","hp":2000,"atk":150,"def":30,"money":30,"exp":30,"point":0,"special":[28]},
-	"tulipFairy": {"name":"郁金香花妖","hp":10000,"atk":130,"def":50,"money":0,"exp":0,"point":0,"special":[18,24,31],"repulse":50,"laser":50,"afterBattle":[{"type":"win","reason":""}],"zoneSquare":true,"absorbValue":0.2},
+	"tulipFairy": {"name":"郁金香花妖","hp":10000,"atk":135,"def":55,"money":0,"exp":0,"point":0,"special":[18,24,31],"repulse":50,"laser":50,"afterBattle":[{"type":"win","reason":""}],"zoneSquare":true,"absorbValue":0.3},
 	"xishiFairy": {"name":"吸噬花妖","hp":1000,"atk":60,"def":20,"money":10,"exp":10,"point":0,"special":[31],"absorbValue":0.2},
 	"purpleBowman": {"name":"高级弓兵","hp":0,"atk":0,"def":0,"money":0,"exp":0,"point":0,"special":0},
 	"bearDown": {"name":"熊出没","hp":0,"atk":0,"def":0,"money":0,"exp":0,"point":0,"special":[],"faceIds":{"down":"bearDown","left":"bearLeft","right":"bearRight","up":"bearUp"},"bigImage":"bear.png"},

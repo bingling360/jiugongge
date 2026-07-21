@@ -18,7 +18,7 @@ loader.prototype._createImageFallback = function (dir, imgName) {
     // 核心素材按原始图集尺寸创建透明画布，保证后续裁剪和源矩形绘制
     // 不会因为一张图片加载失败而再次抛错。其他图片使用单格占位。
     var materialSizes = {
-        animates: [128, 928], enemys: [64, 2336], items: [32, 2048],
+        animates: [128, 928], enemys: [64, 2336], items: [32, 2080],
         npcs: [64, 448], terrains: [32, 1120], enemy48: [128, 384],
         npc48: [128, 480], icons: [32, 1312]
     };

@@ -668,5 +668,10 @@ var items_296f5d02_12fd_4166_a7c1_b5e830c9ee3a =
 		],
 		"text": "可以发送和接收在线留言。",
 		"hideInReplay": true
+	},
+	"hyperCube": {
+		"cls": "items",
+		"name": "超立方体",
+		"text": "一个散发着幽蓝光芒的神秘立方体，似乎蕴含着某种未知的力量"
 	}
 }

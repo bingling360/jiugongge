@@ -683,18 +683,18 @@ main.prototype.listen = function () {
         else if (main.core.isPlaying()) main.core.openKeyBoard(true);
     }
 
-    ////// 点击状态栏中的快捷商店时 //////
+    ////// 点击状态栏中的快捷商店时（快捷商店已禁用，需走到商店位置触发） //////
     main.statusBar.image.shop.onclick = function (e) {
         e.stopPropagation();
         if (core.isReplaying()) return;
-        else if (main.core.isPlaying()) main.core.openQuickShop(true);
+        else if (main.core.isPlaying()) main.core.drawTip("快捷商店已禁用，请走到商店位置触发");
     }
 
-    ////// 点击金币时也可以开启快捷商店 //////
+    ////// 点击金币时原本也可开启快捷商店，现已禁用（需走到商店位置触发） //////
     main.statusBar.image.money.onclick = function (e) {
         e.stopPropagation();
         if (core.isReplaying()) return;
-        else if (main.core.isPlaying()) main.core.openQuickShop(true);
+        else if (main.core.isPlaying()) main.core.drawTip("快捷商店已禁用，请走到商店位置触发");
     }
 
     ////// 楼梯图标代表浏览地图 //////

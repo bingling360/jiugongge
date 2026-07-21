@@ -192,7 +192,7 @@
         <div id="next"></div>
     </div>
 </div>
-<!-- 竖屏下点底部"虚拟键盘"图标，在原本虚拟键盘出现的位置(底部中间)切换出方向键面板 -->
+<!-- 竖屏下点底部"虚拟键盘"图标，在底部中间唤出方向键面板（默认隐藏，仅点图标时出现） -->
 <div id="dpadPanel" aria-hidden="true">
     <div class="dpad-btn" data-code="37" id="dpad-left">◀</div>
     <div class="dpad-btn" data-code="38" id="dpad-up">▲</div>
@@ -248,7 +248,7 @@
     window.addEventListener('pointerup', releaseAll, true);
     window.addEventListener('pointercancel', releaseAll, true);
 
-    var dpadHidden = false;
+    var dpadHidden = true;
     function isVert() {
       return !!(window.core && window.core.domStyle && window.core.domStyle.isVertical);
     }
