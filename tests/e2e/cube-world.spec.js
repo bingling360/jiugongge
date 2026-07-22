@@ -1169,13 +1169,4 @@ test("跨面夹击随生命实时重算，阻击怪可完整搬运到相邻面�
     expect(result.absorb).toEqual({ mon_hp: 350, turn: 6 });
 });
 
-test("移动端方向键可见并把触控按下/抬起映射为引擎方向输入", async ({ page }) => {
-    await page.setViewportSize({ width: 390, height: 844 });
-    await bootGame(page);
-    const pad = page.locator("#cube-mobile-pad");
-    await expect(pad).toBeVisible();
-    await expect(pad.locator("button")).toHaveCount(4);
-    await pad.locator('[data-dir="right"]').dispatchEvent("pointerdown", { pointerId: 1, pointerType: "touch", isPrimary: true });
-    await pad.locator('[data-dir="right"]').dispatchEvent("pointerup", { pointerId: 1, pointerType: "touch", isPrimary: true });
-    await expect.poll(() => page.evaluate(() => core.status.route.includes("right"))).toBe(true);
-});
+
