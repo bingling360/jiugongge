@@ -271,6 +271,14 @@
       else if (window.core && window.core.openKeyBoard) window.core.openKeyBoard(true);
     };
 
+    // 面板打开时，点按除方向键（及虚拟键盘图标）以外的任意位置均可关闭
+    document.addEventListener('click', function (e) {
+      if (dpadHidden) return;
+      if (e.target && e.target.closest && (e.target.closest('.dpad-btn') || e.target.closest('#img-keyboard'))) return;
+      dpadHidden = true;
+      apply();
+    }, false);
+
     if (window.core && window.core.control && window.core.control.registerResize) {
       window.core.control.registerResize('dpadPanel', function () { apply(); });
     }

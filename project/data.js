@@ -93,8 +93,8 @@ var data_a1e2fb4a_e986_4524_b0da_9b7ba7c0874d =
 			"startVerticalBackground": "project/images/bg.jpg",
 			"startLogoStyle": "color: black",
 			"startButtonsStyle": "background-color: #32369F; opacity: 0.85; color: #FFFFFF; border: #FFFFFF 2px solid; caret-color: #FFD700;",
-			"statusLeftBackground": "url(project/materials/ground.png) repeat",
-			"statusTopBackground": "url(project/materials/ground.png) repeat",
+			"statusLeftBackground": "url(project/materials/status_horizontal_bg.jpg) no-repeat center / cover",
+			"statusTopBackground": "url(project/materials/status_vertical_bg.jpg) no-repeat center / cover",
 			"toolsBackground": "url(project/materials/ground.png) repeat",
 			"borderColor": [
 				204,

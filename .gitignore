@@ -13,3 +13,10 @@ playwright-report/
 test-results/
 coverage/
 _saves/
+
+# 编辑器本地使用状态（最近使用素材、最后停留楼层等），非项目配置
+_server/config.json
+
+# 调试日志 / 测试产物
+server-out.txt
+server-err.txt

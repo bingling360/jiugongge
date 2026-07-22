@@ -645,6 +645,9 @@ control.prototype.setHeroMoveInterval = function (callback) {
         if (core.status.heroMoving >= 8) {
             clearInterval(core.interval.heroMoveInterval);
             core.status.heroMoving = 0;
+            // 动画结束即视为静止，否则 isMoving() 会一直为 true，
+            // 导致移动完成回调(core.replay)被回放主循环 early-return 而丢弃后续动作
+            core.status.heroStop = true;
             if (callback) callback();
         }
     }, core.values.moveSpeed / 8 * toAdd / core.status.replay.speed);
@@ -1885,6 +1888,17 @@ control.prototype.replay = function (force) {
     if (!core.isPlaying() || !core.isReplaying()
         || core.status.replay.animate || core.status.event.id || core.status.replay.failed) return;
     if (core.status.replay.pausing && !force) return;
+    // 英雄仍在移动（跨楼层移动 crossHero 等动画可能尚未结束）时，本格动作不能立即执行：
+    // 直接发起会命中 moveHero 的 guard 被静默丢弃，而异步重试又会因动作乱序导致错位。
+    // 这里不放回“已消费”，而是整段延迟：动作仍留在队列头部，等英雄真正静止后再从队首处理，
+    // 既不会丢动作，也严格保证逐格顺序，从而使连续回放与逐帧/N键回放、以及不同速度之间完全一致。
+    // 重驱动器沿用调用时的 force 标记：连续回放用非强制(非暂停态正常推进)，
+    // 逐步(N键)回放用强制(暂停态下也能继续推进一格)，两种方式都不会丢动作。
+    if (core.isMoving()) {
+        var f = force;
+        setTimeout(function () { core.replay(f); }, 16);
+        return;
+    }
 
     this._replay_drawProgress();
     if (core.status.replay.toReplay.length == 0)
@@ -2041,17 +2055,17 @@ control.prototype.__replay_getTimeout = function () {
     return 100 / Math.max(1, core.status.replay.speed);
 }
 
-control.prototype._replayAction_move = function (action) {
-    if (["up", "down", "left", "right"].indexOf(action) < 0) return false;
-    core.moveHero(action, core.replay);
-    return true;
-}
+    control.prototype._replayAction_move = function (action) {
+        if (["up", "down", "left", "right"].indexOf(action) < 0) return false;
+        core.moveHero(action, core.replay);
+        return true;
+    }
 
 control.prototype._replayAction_item = function (action) {
     if (action.indexOf("item:") != 0) return false;
     var itemId = action.substring(5);
     if (!core.canUseItem(itemId)) return false;
-    if (core.material.items[itemId].hideInReplay || core.status.replay.speed == 24) {
+    if (core.material.items[itemId].hideInReplay || core.status.replay.speed == 24 || core.isReplaying()) {
         core.useItem(itemId, false, core.replay);
         return true;
     }
@@ -2195,8 +2209,19 @@ control.prototype._replayAction_turn = function (action) {
 
 control.prototype._replayAction_getNext = function (action) {
     if (action != "getNext") return false;
-    core.getNextItem();
-    core.replay();
+    // Wait until the hero is fully settled before gentle-clicking, otherwise
+    // getNextItem() silently no-ops (isMoving) and the pickup is lost — which in
+    // continuous replay makes a gentle-click look like a plain move.
+    var tryGet = function () {
+        if (!core.isReplaying()) return;
+        if (core.isMoving() || core.status.replay.animate || core.status.event.id) {
+            setTimeout(tryGet, 40);
+            return;
+        }
+        core.getNextItem();
+        core.replay();
+    };
+    tryGet();
     return true;
 }
 
