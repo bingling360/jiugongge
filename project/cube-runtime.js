@@ -18,7 +18,6 @@
         var viewerOverlay = null;
         var viewerFrame = null;
         var viewerOpenId = 0;
-        var mobilePad = null;
         var pendingViewQuarter = null;
         var activeMapProjection = null;
         var projectionRenderDepth = 0;
@@ -390,11 +389,6 @@
             if (!viewerOverlay || !core.status || !core.status.played || !isFace(core.status.floorId)) return false;
             viewerOverlay.style.display = "block";
             viewerOverlay.setAttribute("aria-hidden", "false");
-            // 仅在触屏/小屏设备上，于查看器内显示移动方向键（不占用主游戏界面）
-            var pad = document.getElementById("cube-mobile-pad");
-            if (pad && window.matchMedia && window.matchMedia("(pointer:coarse),(max-width:760px)").matches) {
-                pad.style.display = "grid";
-            }
             if (!viewerFrame.parentNode) viewerOverlay.appendChild(viewerFrame);
             viewerFrame.inert = false;
             // 查看器是独立 iframe；关闭后复用旧文档会让开发期间修改过的
@@ -410,8 +404,6 @@
             if (!viewerOverlay || viewerOverlay.style.display === "none") return false;
             viewerOverlay.style.display = "none";
             viewerOverlay.setAttribute("aria-hidden", "true");
-            var pad = document.getElementById("cube-mobile-pad");
-            if (pad) pad.style.display = "none";
             if (viewerFrame) {
                 viewerFrame.inert = true;
                 // 通知隐藏的查看器停止后台 WebGL 渲染循环，避免持续占用 GPU/CPU
@@ -430,17 +422,6 @@
         function toggleViewer() {
             if (viewerOverlay && viewerOverlay.style.display !== "none") return closeViewer();
             return openViewer();
-        }
-
-        function directionEvent(keyCode, down) {
-            var event = {
-                keyCode: keyCode,
-                preventDefault: function () { },
-                stopPropagation: function () { },
-                stopImmediatePropagation: function () { }
-            };
-            if (down) core.onkeyDown(event);
-            else core.onkeyUp(event);
         }
 
         // 跨面视图旋转开关：默认关闭（OFF）。开启后进入新面时画面会随
@@ -1245,11 +1226,7 @@
             if (document.getElementById("cube-world-overlay")) return;
             var style = document.createElement("style");
             style.textContent = "#cube-world-overlay{position:fixed;inset:0;z-index:2147483000;background:#05070c;display:none}" +
-                "#cube-world-frame{width:100%;height:100%;border:0;display:block}" +
-                "#cube-mobile-pad{position:fixed;z-index:2147484000;right:max(14px,env(safe-area-inset-right));bottom:max(14px,env(safe-area-inset-bottom));display:none;grid-template-columns:52px 52px 52px;grid-template-rows:52px 52px 52px;gap:5px;touch-action:none;user-select:none}" +
-                "#cube-mobile-pad button{border:1px solid rgba(255,255,255,.55);border-radius:14px;background:rgba(15,23,42,.78);color:#fff;font-size:25px;box-shadow:0 3px 14px rgba(0,0,0,.35);-webkit-tap-highlight-color:transparent}" +
-                "#cube-mobile-pad button:active{background:#2563eb;transform:scale(.94)}" +
-                "#cube-mobile-pad [data-dir=up]{grid-column:2;grid-row:1}#cube-mobile-pad [data-dir=left]{grid-column:1;grid-row:2}#cube-mobile-pad [data-dir=right]{grid-column:3;grid-row:2}#cube-mobile-pad [data-dir=down]{grid-column:2;grid-row:3}";
+                "#cube-world-frame{width:100%;height:100%;border:0;display:block}";
             document.head.appendChild(style);
 
             viewerOverlay = document.createElement("div");
@@ -1270,36 +1247,6 @@
                 if (viewerOverlay.style.display !== "none" && viewerFrame.contentWindow) viewerFrame.contentWindow.focus();
             });
             document.body.appendChild(viewerOverlay);
-
-            mobilePad = document.createElement("div");
-            mobilePad.id = "cube-mobile-pad";
-            mobilePad.setAttribute("aria-label", "移动方向键");
-            [["up", 38, "↑"], ["left", 37, "←"], ["right", 39, "→"], ["down", 40, "↓"]].forEach(function (data) {
-                var button = document.createElement("button");
-                var activePointerId = null;
-                button.type = "button";
-                button.dataset.dir = data[0];
-                button.dataset.key = data[1];
-                button.textContent = data[2];
-                button.setAttribute("aria-label", data[0]);
-                button.addEventListener("pointerdown", function (event) {
-                    event.preventDefault();
-                    if (activePointerId != null) return;
-                    activePointerId = event.pointerId;
-                    button.setPointerCapture(event.pointerId);
-                    directionEvent(Number(button.dataset.key), true);
-                });
-                ["pointerup", "pointercancel", "lostpointercapture"].forEach(function (name) {
-                    button.addEventListener(name, function (event) {
-                        event.preventDefault();
-                        if (activePointerId !== event.pointerId) return;
-                        activePointerId = null;
-                        directionEvent(Number(button.dataset.key), false);
-                    });
-                });
-                mobilePad.appendChild(button);
-            });
-            document.body.appendChild(mobilePad);
 
             // [disabled] feat 自带的 C 键(67) 3D 地图触发器已按需求禁用；引擎与 viewer 其余逻辑保留
             // core.registerAction("keyUp", "cube-world-viewer", function (keyCode) {
@@ -1470,7 +1417,17 @@
                     }
                 });
             });
+            // 隐士献祭：铃兰花妖/郁金香花妖按道具扣除血量，与光环按加性百分比叠加
+            var lilyDeduct = 0, lilyBaseHp = info.hp;
+            if (enemy && (enemy.id === "keiskeiFairy" || enemy.id === "tulipFairy")) {
+                lilyDeduct = core.getFlag("recluseDeductP", 0) || 0;
+            }
+            if (lilyDeduct > 0) hpBuff -= lilyDeduct;
             info.hp = Math.floor(info.hp * (1 + hpBuff / 100));
+            if (lilyDeduct > 0) {
+                var lilyMinHp = Math.ceil(lilyBaseHp * 0.03);
+                if (info.hp < lilyMinHp) info.hp = lilyMinHp;
+            }
             info.atk = Math.floor(info.atk * (1 + atkBuff / 100));
             info.def = Math.floor(info.def * (1 + defBuff / 100));
             info.guards = guards;
@@ -1528,10 +1485,33 @@
         // 在 150+ 个 block 的密集内容上每步约 250ms，是“移动卡顿”的主因。
         // 这些显伤字符串只在敌人位置/属性、英雄生命/防御/攻击、镜头、显伤开关、
         // 以及跨面光环来源变化时改变，普通行走中都不变化。故用状态签名记忆化：
-        // 签名不变且画布未被外部重置时，直接复用上次数据、跳过整层字符串重算。
-        var damageCache = { signature: null, data: null, extraData: null };
         // 重入保护：updateDamage 内部会再调用 drawDamage，避免两者相互触发导致递归重算。
         var inUpdateDamage = false;
+        // 显伤合并缓存：updateDamage 在每步(同步)与每帧(rAF)都会被调用，
+        // 连续移动(moveDirectly)时一帧内可能触发多次。把“整层重算 + 整张画布重绘”
+        // 合并到下一个动画帧执行一次，避免同步重复重型重算导致移动卡顿。
+        var damageCache = { signature: null, data: null, extraData: null, drawn: false, dirty: false, pendingSig: null, pendingFloorId: null };
+
+        // 共享的“合并重算”调度器：把 updateDamage / updateCheckBlock 的多次同步调用
+        // 合并到下一个动画帧，每帧最多真正重算一次。连续移动一帧内即便触发多次，
+        // 也只重算并重绘一次，杜绝每步同步做多次整层重算而卡顿。
+        var _coalesceFlushes = [];
+        var _coalesceScheduled = false;
+        function _scheduleCoalesce(fn) {
+            _coalesceFlushes.push(fn);
+            if (!_coalesceScheduled) {
+                _coalesceScheduled = true;
+                requestAnimationFrame(_runCoalesceFlushes);
+            }
+        }
+        function _runCoalesceFlushes() {
+            _coalesceScheduled = false;
+            var list = _coalesceFlushes;
+            _coalesceFlushes = [];
+            for (var i = 0; i < list.length; i++) {
+                try { list[i](); } catch (e) { /* 单个重算异常不应阻断其它重算 */ }
+            }
+        }
 
         // 单个敌人的显伤相关属性（含光环加成属性）
         function enemyDamageProps(b) {
@@ -1546,7 +1526,27 @@
 
         // 跨面光环：其它层的光环来源敌人(特技25/26)会改变本层显伤，必须纳入签名，
         // 否则光环变化时显伤会“残留”陈旧数值。本层光环已由 blocks 签名覆盖，故跳过。
+        // 性能优化：显伤签名每帧都会对 displayData/specialIconData 调用 getLocalStorage
+        // （同步读取 localStorage + JSON.parse）再 JSON.stringify，属于无谓的每帧开销。
+        // 缓存其序列化结果，仅在对应 key 经 setLocalStorage 变更时失效。
+        var damageSettingsCache = { displayData: undefined, specialIconData: undefined };
+        if (typeof core.setLocalStorage === "function") {
+            var _origSetLocalStorage = core.setLocalStorage;
+            core.setLocalStorage = function (key, value) {
+                if (key === "displayData") damageSettingsCache.displayData = undefined;
+                else if (key === "specialIconData") damageSettingsCache.specialIconData = undefined;
+                return _origSetLocalStorage.apply(this, arguments);
+            };
+        }
+        function getDamageSettingString(key) {
+            if (damageSettingsCache[key] === undefined) {
+                damageSettingsCache[key] = JSON.stringify(core.getLocalStorage(key, {}));
+            }
+            return damageSettingsCache[key];
+        }
+
         function computeAuraSignature(floorId) {
+
             var hasAura = false, parts = [];
             CubeWorld.FACE_IDS.forEach(function (fid) {
                 if (fid === floorId) return;
@@ -1574,8 +1574,8 @@
             ["displayEnemyDamage", "displayExtraDamage", "displayCritical", "extraDamageType"].forEach(function (f) {
                 parts.push(f + "=" + (core.hasFlag(f) ? 1 : 0));
             });
-            parts.push("displayData=" + JSON.stringify(core.getLocalStorage("displayData", {})));
-            parts.push("specialIcon=" + JSON.stringify(core.getLocalStorage("specialIconData", {})));
+            parts.push("displayData=" + getDamageSettingString("displayData"));
+            parts.push("specialIcon=" + getDamageSettingString("specialIconData"));
             var blocks = (core.status.maps[floorId] && core.status.maps[floorId].blocks) || [];
             var blockSig = [];
             for (var i = 0; i < blocks.length; i++) {
@@ -1592,30 +1592,145 @@
             var originalUpdateDamage = core.updateDamage;
             core.updateDamage = function (floorId, ctx) {
                 floorId = floorId || core.status.floorId;
-                // 小地图(ctx)按需走原逻辑，不缓存
+                // 小地图(ctx)按需走原逻辑，不缓存/不合并
                 if (ctx) return originalUpdateDamage.call(core, floorId, ctx);
                 var sig = computeDamageSignature(floorId);
-                var stale = damageCache.signature !== sig;
                 // 引擎可能在外部重置/替换 core.status.damage（例如读档、切换存档），
-                // 此时即便签名“看似”未变也要重算，否则显伤会消失或显示陈旧引用，
-                // 直到打怪才重新出现。
-                var externallyReset = !stale && damageCache.data && core.status.damage.data !== damageCache.data;
-                if (!stale && !externallyReset) {
-                    // 状态未变且画布未被外部重置：显伤层(core.canvas.damage)是独立画布，
-                    // 随整图投影一起变换，外部不会清空它，直接复用上次数据即可。
+                // 此时即便签名“看似”未变也要重算，否则显伤会消失或显示陈旧引用。
+                var externallyReset = damageCache.data && core.status.damage && core.status.damage.data !== damageCache.data;
+                if (damageCache.signature === sig && damageCache.drawn && !externallyReset) {
+                    // 状态未变且画布已绘制、未被外部重置：直接复用，跳过整层重算与整张重绘。
                     return;
                 }
-                inUpdateDamage = true;
-                try {
-                    var result = originalUpdateDamage.call(core, floorId, ctx);
-                } finally {
-                    inUpdateDamage = false;
+                // 首次进入某层：同步计算，确保显伤在阅读档/进层瞬间立即可见
+                // （fix/load-damage-immediate-show），之后再走合并路径。
+                if (damageCache.signature === null) {
+                    inUpdateDamage = true;
+                    try { originalUpdateDamage.call(core, floorId); } finally { inUpdateDamage = false; }
+                    damageCache.signature = sig;
+                    damageCache.data = core.status.damage ? core.status.damage.data : null;
+                    damageCache.extraData = core.status.damage ? core.status.damage.extraData : null;
+                    damageCache.drawn = true;
+                    return;
                 }
-                damageCache.signature = sig;
-                damageCache.data = core.status.damage.data;
-                damageCache.extraData = core.status.damage.extraData;
-                return result;
+                // 状态变了：仅打“脏标记”，真正的整层重算 + 整张画布重绘合并到下一个
+                // 动画帧执行一次。连续移动(moveDirectly)一帧内可能触发多次 updateDamage
+                // （每步同步调用 + 每帧 rAF 调用），合并后每帧最多重算并重绘一次，
+                // 避免在移动步骤里同步做多次重型重算而卡顿。
+                damageCache.pendingSig = sig;
+                damageCache.pendingFloorId = floorId;
+                damageCache.dirty = true;
+                _scheduleCoalesce(_flushDamage);
+                return;
             };
+            function _flushDamage() {
+                if (!damageCache.dirty) return;
+                damageCache.dirty = false;
+                var sig = damageCache.pendingSig, floorId = damageCache.pendingFloorId;
+                inUpdateDamage = true;
+                try { originalUpdateDamage.call(core, floorId); } finally { inUpdateDamage = false; }
+                damageCache.signature = sig;
+                damageCache.data = core.status.damage ? core.status.damage.data : null;
+                damageCache.extraData = core.status.damage ? core.status.damage.extraData : null;
+                damageCache.drawn = true;
+            }
+        }
+
+        // updateCheckBlock 经 updateStatusBar 每帧(~60fps)触发；但 getCheckBlock 只依赖
+        // 楼层/敌人/地块/flag 状态（夹击伤害依赖 hero.hp），与帧无关。状态不变时直接复用上次结果，
+        // 跳过全层 150+ 个 block 的领域/阻击/激光/捕捉/追猎/夹击嵌套循环重算（原约 250ms/帧），
+        // 结果与现算完全一致，不影响玩法与路线。
+        if (typeof core.updateCheckBlock === "function") {
+            var checkBlockCache = { signature: null, data: null, floorId: null, dirty: false, pendingSig: null, pendingFloorId: null };
+
+            function computeCheckBlockSignature(floorId) {
+                var parts = [floorId];
+                var hero = core.status.hero;
+                // 夹击伤害 = floor(heroHp/2)，必须纳入，否则受治疗后数值会残留旧值
+                parts.push("heroHp=" + (hero ? hero.hp : "none"));
+                ["no_zone", "no_repulse", "no_laser", "no_ambush", "no_betweenAttack"].forEach(function (f) {
+                    parts.push(f + "=" + (core.hasFlag(f) ? 1 : 0));
+                });
+                parts.push("amulet=" + (core.hasItem("amulet") ? 1 : 0));
+                var chaseType = core.getChaseType ? core.getChaseType() : [];
+                parts.push("chase=" + (chaseType.join ? chaseType.join(",") : chaseType));
+                var blocks = core.getMapBlocksObj(floorId);
+                var blockSig = [];
+                for (var loc in blocks) {
+                    if (!blocks.hasOwnProperty(loc)) continue;
+                    var b = blocks[loc];
+                    // 只有带 event 的 block 才会参与领域/夹击/阻击/追猎/血网/激光等机制
+                    // （光地板、墙等无 event 的 block 在 getCheckBlock 中永远不产生任何伤害），
+                    // 跳过它们把签名遍历量从整层(~169)降到仅事件块(~数十)，
+                    // 避免“签名本身比原算 getCheckBlock 还贵”导致缓存反倒更卡。
+                    if (!b.event) continue;
+                    if (b.disable) { blockSig.push("d"); continue; }
+                    var e = b.event;
+                    // 覆盖 getCheckBlock 读取的全部字段：坐标/类别/数据影响追猎视线与伪装，
+                    // special/range/zone/repulse/laser/zoneSquare/betweenAttack 决定各机制触发与伤害
+                    blockSig.push(
+                        b.x + "," + b.y + "|" + (e.id || "") + "|" + (e.cls || "") + "|" + (e.data != null ? e.data : "") +
+                        "|" + (e.special || "") + "|" + (e.atk || 0) + "|" + (e.def || 0) + "|" +
+                        (e.hp || 0) + "|" + (e.range || 0) + "|" + (e.zone || 0) + "|" +
+                        (e.repulse || 0) + "|" + (e.laser || 0) + "|" + (e.zoneSquare != null ? e.zoneSquare : "") +
+                        "|" + (e.betweenAttack || 0)
+                    );
+                }
+                parts.push("blocks=" + blockSig.join(";"));
+                return parts.join("&");
+            }
+
+            var originalUpdateCheckBlock = core.updateCheckBlock;
+            core.updateCheckBlock = function (floorId) {
+                if (!core.status) return originalUpdateCheckBlock.call(core, floorId);
+                floorId = floorId || core.status.floorId;
+                if (!floorId) return originalUpdateCheckBlock.call(core, floorId);
+                // 六面楼层由 cube-runtime 的 buildCheckBlock（跨面签名缓存）+ moveOneStep
+                // 每步强制刷新处理，其显伤依赖其它面的 block，单层签名会返回陈旧结果，
+                // 故此处不缓存，直接走 cube 自带的跨面缓存（本身已足够快）。
+                if (typeof isFace === "function" && isFace(floorId)) {
+                    return originalUpdateCheckBlock.call(core, floorId);
+                }
+                var sig = computeCheckBlockSignature(floorId);
+                // 签名已覆盖全部输入（楼层/敌人/地块/flag/hero.hp/追猎类型）。
+                // 签名一致即整图领域/夹击/阻击数据“内容”一致，可直接复用。
+                if (checkBlockCache.signature === sig && checkBlockCache.data) {
+                    // 状态未变：直接复用上次计算出的整图领域/夹击/阻击数据
+                    core.status.checkBlock = checkBlockCache.data;
+                    return true;
+                }
+                // 首次进层或切换楼层：同步计算，确保新楼层的领域/夹击/阻击网格立即正确
+                // （避免延迟一帧时恰好结算地图伤害而用了旧楼层网格算错伤害）。
+                if (checkBlockCache.floorId !== floorId) {
+                    var r0 = originalUpdateCheckBlock.call(core, floorId);
+                    if (core.status.checkBlock) {
+                        checkBlockCache.signature = sig;
+                        checkBlockCache.data = core.status.checkBlock;
+                        checkBlockCache.floorId = floorId;
+                    }
+                    return r0;
+                }
+                // 状态变了：合并到下一个动画帧重算一次（与 updateDamage 共用调度器，
+                // 同帧内 checkBlock 先于 damage 重算，保证 extra 伤害取自最新领域网格）。
+                // 领域网格只随敌人/地块变化、不随英雄移动变化，延迟一帧重算不影响玩法；
+                // 仅“夹击”伤害依赖 hero.hp，延迟一帧最多偏差一步扣血，可忽略。
+                checkBlockCache.pendingSig = sig;
+                checkBlockCache.pendingFloorId = floorId;
+                checkBlockCache.dirty = true;
+                _scheduleCoalesce(_flushCheckBlock);
+                return true;
+            };
+            function _flushCheckBlock() {
+                if (!checkBlockCache.dirty) return;
+                checkBlockCache.dirty = false;
+                var sig = checkBlockCache.pendingSig, floorId = checkBlockCache.pendingFloorId;
+                originalUpdateCheckBlock.call(core, floorId);
+                if (core.status.checkBlock) {
+                    checkBlockCache.signature = sig;
+                    checkBlockCache.data = core.status.checkBlock;
+                    checkBlockCache.floorId = floorId;
+                }
+            }
         }
 
         // redrawMap → core.drawDamage 会清空显伤画布并按 core.status.damage.data 重绘。
@@ -1657,6 +1772,7 @@
                             damageCache.signature = computeDamageSignature(floorId);
                             damageCache.data = core.status.damage.data;
                             damageCache.extraData = core.status.damage.extraData;
+                            damageCache.drawn = true;
                             return;
                         }
                     }
