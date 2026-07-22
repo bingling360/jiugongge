@@ -1425,7 +1425,7 @@
             if (lilyDeduct > 0) hpBuff -= lilyDeduct;
             info.hp = Math.floor(info.hp * (1 + hpBuff / 100));
             if (lilyDeduct > 0) {
-                var lilyMinHp = Math.ceil(lilyBaseHp * 0.03);
+                var lilyMinHp = Math.ceil(lilyBaseHp * 0.02);
                 if (info.hp < lilyMinHp) info.hp = lilyMinHp;
             }
             info.atk = Math.floor(info.atk * (1 + atkBuff / 100));

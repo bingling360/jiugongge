@@ -619,7 +619,7 @@ var data_a1e2fb4a_e986_4524_b0da_9b7ba7c0874d =
 						]
 					},
 					{
-						"text": "护盾+30（${30+5*flag:shop1}金币）",
+						"text": "护盾+60（${30+5*flag:shop1}金币）",
 						"need": "status:money>=30+5*flag:shop1",
 						"action": [
 							{
@@ -640,9 +640,9 @@ var data_a1e2fb4a_e986_4524_b0da_9b7ba7c0874d =
 							},
 							{
 								"type": "setValue",
-								"name": "status:mdef",
-								"operator": "+=",
-								"value": "30"
+							"name": "status:mdef",
+							"operator": "+=",
+							"value": "60"
 							}
 						]
 					}
@@ -712,7 +712,7 @@ var data_a1e2fb4a_e986_4524_b0da_9b7ba7c0874d =
 						]
 					},
 					{
-						"text": "护盾+30（${30+5*flag:shop2}经验）",
+						"text": "护盾+60（${30+5*flag:shop2}经验）",
 						"need": "status:exp>=30+5*flag:shop2",
 						"action": [
 							{
@@ -733,9 +733,9 @@ var data_a1e2fb4a_e986_4524_b0da_9b7ba7c0874d =
 							},
 							{
 								"type": "setValue",
-								"name": "status:mdef",
-								"operator": "+=",
-								"value": "30"
+							"name": "status:mdef",
+							"operator": "+=",
+							"value": "60"
 							}
 						]
 					}
