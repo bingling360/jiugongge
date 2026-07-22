@@ -8,7 +8,18 @@ main.floors.MT1=
     "canUseQuickShop": true,
     "cannotViewMap": false,
     "defaultGround": "ground",
-    "images": [],
+    "images": [
+        {
+            "name": "floor_texture.jpg",
+            "x": 0,
+            "y": 0,
+            "w": 416,
+            "h": 416,
+            "sx": 0,
+            "sy": 0,
+            "canvas": "bg"
+        }
+    ],
     "ratio": 1,
     "map": [
     [  0,221,  0,  0,  0,169, 27,169,  0,  0,  0,221,  0],

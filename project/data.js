@@ -18,7 +18,8 @@ var data_a1e2fb4a_e986_4524_b0da_9b7ba7c0874d =
 			"gura_maid_hd.png",
 			"hero.png",
 			"mousewheel.png",
-			"winskin.png"
+			"winskin.png",
+			"floor_texture.jpg"
 		],
 		"tilesets": [
 			"magictower.png"
@@ -616,6 +617,34 @@ var data_a1e2fb4a_e986_4524_b0da_9b7ba7c0874d =
 								"value": "2"
 							}
 						]
+					},
+					{
+						"text": "护盾+30（${30+5*flag:shop1}金币）",
+						"need": "status:money>=30+5*flag:shop1",
+						"action": [
+							{
+								"type": "comment",
+								"text": "新版商店中需要手动扣减金币和增加购买次数"
+							},
+							{
+								"type": "setValue",
+								"name": "status:money",
+								"operator": "-=",
+								"value": "30+5*flag:shop1"
+							},
+							{
+								"type": "setValue",
+								"name": "flag:shop1",
+								"operator": "+=",
+								"value": "1"
+							},
+							{
+								"type": "setValue",
+								"name": "status:mdef",
+								"operator": "+=",
+								"value": "30"
+							}
+						]
 					}
 				]
 			},
@@ -679,6 +708,34 @@ var data_a1e2fb4a_e986_4524_b0da_9b7ba7c0874d =
 								"name": "status:def",
 								"operator": "+=",
 								"value": "2"
+							}
+						]
+					},
+					{
+						"text": "护盾+30（${30+5*flag:shop2}经验）",
+						"need": "status:exp>=30+5*flag:shop2",
+						"action": [
+							{
+								"type": "comment",
+								"text": "新版商店中需要手动扣减经验和增加购买次数"
+							},
+							{
+								"type": "setValue",
+								"name": "status:exp",
+								"operator": "-=",
+								"value": "30+5*flag:shop2"
+							},
+							{
+								"type": "setValue",
+								"name": "flag:shop2",
+								"operator": "+=",
+								"value": "1"
+							},
+							{
+								"type": "setValue",
+								"name": "status:mdef",
+								"operator": "+=",
+								"value": "30"
 							}
 						]
 					}
