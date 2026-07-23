@@ -1,6 +1,7 @@
 main.floors.MT3=
 {
     "floorId": "MT3",
+    "bgm": "wenwen.mp3",
     "title": "右面",
     "name": "右面",
     "canFlyTo": true,

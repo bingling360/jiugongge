@@ -1,6 +1,7 @@
 main.floors.MT5=
 {
     "floorId": "MT5",
+    "bgm": "wenwen.mp3",
     "title": "底面",
     "name": "底面",
     "canFlyTo": true,

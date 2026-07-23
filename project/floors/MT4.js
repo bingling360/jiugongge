@@ -1,6 +1,7 @@
 main.floors.MT4=
 {
     "floorId": "MT4",
+    "bgm": "wenwen.mp3",
     "title": "顶面",
     "name": "顶面",
     "canFlyTo": true,

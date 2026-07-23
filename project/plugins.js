@@ -15,7 +15,123 @@ var plugins_bb40132b_638b_4a9f_b028_d3fe47acc8d1 =
 			// 本函数将在所有资源加载完毕后，游戏开启前被执行
 			// 可以在这个函数里面对资源进行一些操作。
 			// 若需要进行切分图片，可以使用 core.splitImage() 函数，或直接在全塔属性-图片切分中操作
+
+			// ===== 星光特效：为整座塔的每一层随机添加漂浮的星光光点 =====
+			// 说明：该特效仅使用程序生成的光晕精灵，不依赖任何图片资源。
+			// 为避免依赖"资源加载完成"回调（在个别资源加载失败/未编译时该回调不会触发），
+			// 这里直接启动一个独立的 requestAnimationFrame 循环；当 core.__PIXELS__ 就绪后再创建画布。
+			if (core._starlightStarted) return;
+			core._starlightStarted = true;
+
+			var SIZE = 0, slCtx = null, slCanvas = null, starSprites = null, stars = [];
+
+			// 预生成柔和的星光精灵（径向渐变光晕），带几种色调
+			function makeStarSprite(rgb) {
+				var s = 32, cv = document.createElement('canvas');
+				cv.width = cv.height = s;
+				var g = cv.getContext('2d');
+				var grad = g.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
+				grad.addColorStop(0.0, 'rgba(' + rgb + ',1)');
+				grad.addColorStop(0.25, 'rgba(' + rgb + ',0.55)');
+				grad.addColorStop(1.0, 'rgba(' + rgb + ',0)');
+				g.fillStyle = grad;
+				g.fillRect(0, 0, s, s);
+				return cv;
+			}
+
+			// 为当前楼层随机生成一组星光
+			function generateStars() {
+				stars = [];
+				if (!SIZE) return;
+				// 密度：约每格 0.6~1.1 个，整体随机
+				var n = Math.round((SIZE / 32) * (SIZE / 32) * (0.6 + Math.random() * 0.5));
+				for (var i = 0; i < n; i++) {
+					stars.push({
+						x: Math.random() * SIZE,
+						y: Math.random() * SIZE,
+						r: 1 + Math.random() * 2.6,                        // 光点半径
+						a: 0.25 + Math.random() * 0.6,                     // 基础透明度
+						sp: 0.5 + Math.random() * 2.0,                     // 闪烁速度
+						ph: Math.random() * Math.PI * 2,                   // 闪烁相位
+						dx: (Math.random() - 0.5) * 0.15,                  // 水平漂移
+						dy: -(0.05 + Math.random() * 0.2),                 // 缓慢上升
+						c: (Math.random() * starSprites.length) | 0        // 色调
+					});
+				}
+			}
+
+			// 当 core.__PIXELS__ 就绪后创建叠加画布（位于 floor 之上，UI 之下）
+			// 注意：不使用 core.ui.createCanvas，因为它会把画布登记进 core.dymCanvas，
+			// 而引擎在 clearStatus / deleteAllCanvas 时会清空所有动态画布，导致星光被删除。
+			// 这里改为手动创建并挂到 #gameDraw，尺寸逻辑与引擎 createCanvas 保持一致（含高清屏）。
+			function ensureCanvas() {
+				if (slCtx || typeof core.__PIXELS__ !== 'number' || core.__PIXELS__ <= 0) return;
+				SIZE = core.__PIXELS__;
+				slCanvas = document.createElement('canvas');
+				slCtx = slCanvas.getContext('2d');
+				slCanvas.style.position = 'absolute';
+				slCanvas.style.left = '0px';
+				slCanvas.style.top = '0px';
+				slCanvas.style.pointerEvents = 'none';
+				slCanvas.style.zIndex = '62';  // 位于 floor(fg:60) 之上、damage(65)/UI 之下
+				slCanvas.setAttribute('id', 'starlight');
+				if (core.flags.enableHDCanvas) {
+					slCanvas.style.width = SIZE + 'px';
+					slCanvas.style.height = SIZE + 'px';
+					slCanvas.width = SIZE * core.domStyle.ratio;
+					slCanvas.height = SIZE * core.domStyle.ratio;
+					slCtx.scale(core.domStyle.ratio, core.domStyle.ratio);
+				} else {
+					slCanvas.width = SIZE;
+					slCanvas.height = SIZE;
+				}
+				core.dom.gameDraw.appendChild(slCanvas);
+				starSprites = [
+					makeStarSprite('255,255,255'),  // 白
+					makeStarSprite('186,222,255'),  // 淡蓝
+					makeStarSprite('255,233,176'),  // 暖金
+					makeStarSprite('212,200,255')   // 淡紫
+				];
+				generateStars();
+			}
+
+			var lastFloor = undefined;
+			// 独立的逐帧绘制循环：惰性创建画布，之后做闪烁+漂移；切换楼层时重新随机分布
+			function starlightFrame() {
+				ensureCanvas();
+				if (slCtx) {
+					if (core.status.floorId !== lastFloor) {
+						lastFloor = core.status.floorId;
+						generateStars();
+					}
+					slCtx.clearRect(0, 0, SIZE, SIZE);
+					var t = Date.now() / 1000;  // rAF 回调未传入 timestamp，使用本地时间
+					for (var i = 0; i < stars.length; i++) {
+						var s = stars[i];
+						var tw = 0.5 + 0.5 * Math.sin(t * s.sp + s.ph);  // 0~1 闪烁
+						var alpha = s.a * tw;
+						if (alpha <= 0.01) continue;
+						slCtx.globalAlpha = alpha;
+						var d = s.r * 6;  // 绘制直径（精灵含光晕）
+						slCtx.drawImage(starSprites[s.c], s.x - d / 2, s.y - d / 2, d, d);
+						// 缓慢漂移，越界后回收
+						s.x += s.dx;
+						s.y += s.dy;
+						if (s.y < -8) { s.y = SIZE + 8; s.x = Math.random() * SIZE; }
+						if (s.x < -8) s.x = SIZE + 8;
+						if (s.x > SIZE + 8) s.x = -8;
+					}
+					slCtx.globalAlpha = 1;
+				}
+				window.requestAnimationFrame(starlightFrame);
+			}
+			window.requestAnimationFrame(starlightFrame);
 		}
+
+		// 资源加载完成的回调（_afterLoadResources）在部分环境下不会自动触发
+		// （例如个别资源加载失败时），因此这里在 init 阶段主动调用一次，
+		// 确保星光特效一定会被初始化。重复调用是安全的：画布按 id 重建、动画帧按 name 重注册。
+		if (typeof this._afterLoadResources === 'function') this._afterLoadResources();
 
 		// 可以在任何地方（如afterXXX或自定义脚本事件）调用函数，方法为 core.plugin.xxx();
 		// 从V2.6开始，插件中用this.XXX方式定义的函数也会被转发到core中，详见文档-脚本-函数的转发。

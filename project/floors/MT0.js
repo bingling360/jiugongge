@@ -1,6 +1,7 @@
 main.floors.MT0=
 {
     "floorId": "MT0",
+    "bgm": "wenwen.mp3",
     "title": "正面",
     "name": "正面",
     "canFlyTo": true,

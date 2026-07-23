@@ -30,7 +30,8 @@ var data_a1e2fb4a_e986_4524_b0da_9b7ba7c0874d =
 			"zone"
 		],
 		"bgms": [
-			"bgm.mp3"
+			"bgm.mp3",
+			"wenwen.mp3"
 		],
 		"sounds": [
 			"attack.mp3",
@@ -77,6 +78,7 @@ var data_a1e2fb4a_e986_4524_b0da_9b7ba7c0874d =
 			"阻激夹域": "zone.mp3",
 			"穿脱装备": "equip.mp3",
 			"背景音乐": "bgm.mp3",
+			"稳稳地接住你": "wenwen.mp3",
 			"攻击": "attack.mp3",
 			"背景图": "bg.jpg",
 			"商店": "shop.mp3",
@@ -640,9 +642,9 @@ var data_a1e2fb4a_e986_4524_b0da_9b7ba7c0874d =
 							},
 							{
 								"type": "setValue",
-							"name": "status:mdef",
-							"operator": "+=",
-							"value": "60"
+								"name": "status:mdef",
+								"operator": "+=",
+								"value": "60"
 							}
 						]
 					}
@@ -733,9 +735,9 @@ var data_a1e2fb4a_e986_4524_b0da_9b7ba7c0874d =
 							},
 							{
 								"type": "setValue",
-							"name": "status:mdef",
-							"operator": "+=",
-							"value": "60"
+								"name": "status:mdef",
+								"operator": "+=",
+								"value": "60"
 							}
 						]
 					}
@@ -833,7 +835,8 @@ var data_a1e2fb4a_e986_4524_b0da_9b7ba7c0874d =
 			"enableMDef",
 			"enableMoney",
 			"enableExp",
-			"enableKeys"
+			"enableKeys",
+			"enablePZF"
 		],
 		"autoScale": true,
 		"extendToolbar": false,
