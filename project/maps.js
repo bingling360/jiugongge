@@ -237,5 +237,7 @@ var maps_90f36752_8815_4be8_b32b_d7fad1d0542e =
 	"341": {"cls":"items","id":"bentWand"},
 	"342": {"cls":"items","id":"crossChest"},
 	"343": {"cls":"items","id":"postman"},
-	"344": {"cls":"items","id":"hyperCube"}
+	"344": {"cls":"items","id":"hyperCube"},
+	"345": {"cls":"animates","id":"A345"},
+	"346": {"cls":"animates","id":"A346","canBreak":true,"animate":1,"doorInfo":{"time":160,"openSound":"door.mp3","closeSound":"door.mp3","keys":{}}}
 }
