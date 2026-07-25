@@ -15,9 +15,10 @@
             sizes[floorId] = { width: floor.width || 13, height: floor.height || 13 };
         });
         var geometry = CubeWorld.createGeometry({ sizes: sizes });
-        var viewerOverlay = null;
-        var viewerFrame = null;
-        var viewerOpenId = 0;
+var viewerOverlay = null;
+var viewerFrame = null;
+var viewerOpenId = 0;
+var savedLockControl = null; // 打开查看器前保存的游戏控制锁定状态，关闭时恢复
         var pendingViewQuarter = null;
         var activeMapProjection = null;
         var projectionRenderDepth = 0;
@@ -414,9 +415,14 @@
                     if (viewerFrame.contentWindow) {
                         viewerFrame.contentWindow.postMessage({ action: "stopCubeMap" }, "*");
                     }
-                } catch (e) { /* 跨域或文档已销毁时忽略 */ }
-            }
-            if (window.focus) window.focus();
+        } catch (e) { /* 跨域或文档已销毁时忽略 */ }
+      }
+      // 恢复游戏控制锁定状态（与打开时严格区分，关闭后游戏游玩恢复正常输入）
+      if (core.status && savedLockControl !== null) {
+        core.status.lockControl = savedLockControl;
+        savedLockControl = null;
+      }
+      if (window.focus) window.focus();
             if (document.body && document.body.focus) document.body.focus();
             return true;
         }

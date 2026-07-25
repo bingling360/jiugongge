@@ -494,10 +494,9 @@ camera.position.set(3.6, 2.6, 4.6);
 
 var renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(container.clientWidth, container.clientHeight);
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 3));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // 上限 2：降低快速旋转时的 GPU 负载，减少上下文丢失
 renderer.setClearColor(0x0a0a14, 1);
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.enabled = false; // 立方体悬浮、无地面接收阴影，开启会导致受光面自交叠产生奇异反光/条纹
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
 container.appendChild(renderer.domElement);
@@ -510,11 +509,18 @@ container.appendChild(renderer.domElement);
 // 避免“模型消失后不回来”。（若没有此兜底，丢失即永久空白。）
 renderer.domElement.addEventListener("webglcontextlost", function (e) {
   e.preventDefault();
+  controls.enabled = false; // 丢失期间禁用交互，避免对失效上下文操作
   if (animationId != null) { cancelAnimationFrame(animationId); animationId = null; }
 }, false);
 renderer.domElement.addEventListener("webglcontextrestored", function () {
+  // 上下文恢复后，GPU 上所有资源（几何体缓冲、纹理、材质）均失效，需重新上传并重启循环
   refreshAllFaces();
+  // 装饰太阳（发光球 + 光晕）的纹理/材质需标记更新，否则恢复后渲染异常、画面卡死
+  if (decoSunGlowTex) decoSunGlowTex.needsUpdate = true;
+  if (decoSunCore && decoSunCore.material) decoSunCore.material.needsUpdate = true;
+  if (decoSunGlow && decoSunGlow.material) decoSunGlow.material.needsUpdate = true;
   if (currentFace) drawThumbnail(currentFace);
+  controls.enabled = true;
   if (animationId == null) animate();
 }, false);
 
@@ -526,11 +532,27 @@ controls.maxDistance = 14;
 controls.target.set(0, 0, 0);
 controls.update();
 
-scene.add(new THREE.AmbientLight(0xffffff, 0.95));
-var dl = new THREE.DirectionalLight(0xfff2e0, 2.6);
-dl.position.set(5, 10, 7); dl.castShadow = true; scene.add(dl);
-var fl = new THREE.DirectionalLight(0xbfe0ff, 0.8); fl.position.set(-3, 1, -5); scene.add(fl);
-var rl = new THREE.DirectionalLight(0xbfe0ff, 0.55); rl.position.set(-2, -3, 4); scene.add(rl);
+// 完全均匀的世界光：仅用环境光，无任何方向/上下渐变，六面受光完全一致
+scene.add(new THREE.AmbientLight(0xffffff, 1.85));
+// 蓝色太阳：纯装饰，不参与光照计算；固定在模型侧后右上方的世界坐标，仅作视觉点缀
+var decoSunGlowTex = (function () {
+  var gc = document.createElement("canvas"); gc.width = gc.height = 128;
+  var g = gc.getContext("2d");
+  var grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  grad.addColorStop(0, "rgba(200,230,255,1)");
+  grad.addColorStop(0.3, "rgba(90,160,255,0.55)");
+  grad.addColorStop(1, "rgba(40,90,220,0)");
+  g.fillStyle = grad; g.fillRect(0, 0, 128, 128);
+  return new THREE.CanvasTexture(gc);
+})();
+var decoSunPos = new THREE.Vector3(-10, 8, -10); // 模型的侧后右上方（后=-X/-Z，右/上=+X/+Y）
+var decoSunCore = new THREE.Mesh(new THREE.SphereGeometry(1.1, 32, 32), new THREE.MeshBasicMaterial({ color: 0xbfe0ff }));
+decoSunCore.position.copy(decoSunPos);
+scene.add(decoSunCore);
+var decoSunGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: decoSunGlowTex, color: 0x4aa6ff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+decoSunGlow.scale.set(12, 12, 1);
+decoSunGlow.position.copy(decoSunPos);
+scene.add(decoSunGlow);
 
 var cubeSize = 2;
 var faceGroup = new THREE.Group();
@@ -547,7 +569,7 @@ var faceConfigs = [
 ];
 
 function buildFaceTexture(fid) {
-  var S = 2048; // 提高面贴图分辨率以获得更清晰的效果
+  var S = 1024; // 面贴图分辨率：1024 在清晰度与性能间最平衡，避免 2048 在刷新地图时拖慢游戏
   var c = document.createElement("canvas");
   c.width = S; c.height = S;
   var ctx = c.getContext("2d");
@@ -595,12 +617,6 @@ function buildFaceTexture(fid) {
     for (var gx = 0; gx <= mw; gx++) { ctx.beginPath(); ctx.moveTo(Math.floor(gx * cell), 0); ctx.lineTo(Math.floor(gx * cell), S); ctx.stroke(); }
     for (var gy = 0; gy <= mh; gy++) { ctx.beginPath(); ctx.moveTo(0, Math.floor(gy * cell)); ctx.lineTo(S, Math.floor(gy * cell)); ctx.stroke(); }
   }
-  var grad = ctx.createLinearGradient(0, S * 0.82, 0, S);
-  grad.addColorStop(0, "rgba(0,0,0,0)");
-  grad.addColorStop(0.3, "rgba(0,0,0,0.5)");
-  grad.addColorStop(1, "rgba(0,0,0,0.6)");
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, S * 0.82, S, S * 0.18);
   ctx.fillStyle = "#d0d8e8";
   ctx.font = 'bold ' + (S * 0.066) + 'px "PingFang SC","Microsoft YaHei",sans-serif';
   ctx.textAlign = "center"; ctx.textBaseline = "middle";
@@ -630,11 +646,11 @@ var planeGeo = new THREE.PlaneGeometry(cubeSize, cubeSize);
 for (var i = 0; i < faceConfigs.length; i++) {
   var cfg = faceConfigs[i];
   var tex = buildFaceTexture(cfg.id);
-  var mat = new THREE.MeshStandardMaterial({ map: tex, color: 0xffffff, roughness: 0.35, metalness: 0.05, side: THREE.DoubleSide });
+  var mat = new THREE.MeshStandardMaterial({ map: tex, color: 0xffffff, roughness: 0.85, metalness: 0.0, side: THREE.DoubleSide });
   var mesh = new THREE.Mesh(planeGeo, mat);
   mesh.position.set(cfg.pos[0], cfg.pos[1], cfg.pos[2]);
   mesh.rotation.set(cfg.rot[0], cfg.rot[1], cfg.rot[2]);
-  mesh.castShadow = true; mesh.receiveShadow = true;
+  // 关闭阴影投射/接收，避免受光面出现自交叠奇异反光
   mesh.userData.floorId = cfg.id;
   mesh.userData.isSelected = false;
   faceGroup.add(mesh);
@@ -744,6 +760,7 @@ window.toggleDamage = function (type) {
 // 父窗口每次打开查看器时会发来刷新指令：重建 3D 贴图 + 缩略图，切到当前楼层
 window.addEventListener("message", function (e) {
   if (!e.data || e.data.action !== "refreshCubeMap") return;
+  if (viewerClosed) return; // 查看器已关闭，忽略迟到的刷新请求，防止在失效上下文上重建贴图
   refreshAllFaces();
   var fid = e.data.floor;
   if (fid && faceMeshes[fid]) {
@@ -767,11 +784,12 @@ window.addEventListener("resize", onResize);
 // requestAnimationFrame 循环。否则隐藏的 iframe 仍在后台跑 WebGL 渲染，
 // 持续占用 GPU/CPU 导致游戏卡顿。
 var animationId = null;
+var viewerClosed = false; // 已关闭/上下文已释放后，忽略游戏侧迟到的刷新，避免对失效上下文操作
 window.addEventListener("message", function (e) {
   var data = e.data || {};
-  if (data.action === "stopCubeMap" && animationId != null) {
-    cancelAnimationFrame(animationId);
-    animationId = null;
+  if (data.action === "stopCubeMap") {
+    viewerClosed = true;
+    if (animationId != null) { cancelAnimationFrame(animationId); animationId = null; }
     // 真正释放 GPU 上的 WebGL 上下文。否则关闭后旧文档仍占用一个上下文，
     // 而每次打开查看器（cube-runtime.openViewer 换 URL 强制重载）又新建一个，
     // 反复开关会逐步耗尽浏览器上限，最终把当前可见查看器的上下文强制回收、
@@ -831,6 +849,7 @@ window.addEventListener("keydown", function (e) {
     return;
   }
   if (e.key === "Escape" || e.key === "Esc" || e.key === "c" || e.key === "C") {
+    if (viewerClosed) return;
     if (window.parent !== window) {
       window.parent.postMessage({ action: "closeCubeMap" }, "*");
     } else {
