@@ -136,16 +136,14 @@ var savedLockControl = null; // 打开查看器前保存的游戏控制锁定状
         // 虽用到 hero.hp，但 hero 在单次移动过程中 hp 不变）。之前每走一步都
         // 全量重算激光/领域/追猎等几何遍历，正是 main 密集内容下移动卡顿的主因。
         // 这里用“状态签名”做记忆化：签名不变时直接返回上次结果，跳过几何遍历。
-        var checkBlockCache = {};
+        var geoCache = {};
 
-        function computeSignature(floorId) {
+        function computeGeometrySignature(floorId) {
             var parts = [floorId];
             parts.push("amulet=" + (core.hasItem("amulet") ? 1 : 0));
-            parts.push("hp=" + (core.status.hero ? core.status.hero.hp : 0));
             ["no_zone", "no_laser", "no_repulse", "no_ambush", "no_chase", "no_betweenAttack"].forEach(function (f) {
                 parts.push(f + "=" + (core.hasFlag(f) ? 1 : 0));
             });
-            parts.push("betweenAttackMax=" + (core.flags && core.flags.betweenAttackMax ? 1 : 0));
             CubeWorld.FACE_IDS.forEach(function (fid) {
                 var bs = getBlocks(fid);
                 for (var i = 0; i < bs.length; i++) {
@@ -166,18 +164,21 @@ var savedLockControl = null; // 打开查看器前保存的游戏控制锁定状
             floorId = floorId || core.status.floorId;
             if (!isFace(floorId) || !hasMaps() || !core.status.maps[floorId]) return null;
 
-            var signature = computeSignature(floorId);
-            var cached = checkBlockCache[floorId];
-            if (cached && cached.signature === signature) {
-                return cached.value;
+            // 几何层命中缓存则跳过全部领域/激光/阻击/捕捉/追猎遍历，移动受伤不再触发重算。
+            var geoSig = computeGeometrySignature(floorId);
+            var geo = geoCache[floorId];
+            if (!geo || geo.signature !== geoSig) {
+                geo = { signature: geoSig, value: computeGeometry(floorId) };
+                geoCache[floorId] = geo;
             }
 
-            var info = computeCheckBlock(floorId);
-            if (info) checkBlockCache[floorId] = { signature: signature, value: info };
+            // 在几何缓存副本上叠加夹击（依赖 hero.hp），不污染共享几何缓存。
+            var info = cloneCheckBlockInfo(geo.value);
+            applyBetweenAttack(info, floorId);
             return info;
         }
 
-        function computeCheckBlock(floorId) {
+        function computeGeometry(floorId) {
             var info = {
                 damage: {}, type: {}, repulse: {}, ambush: {}, chase: {},
                 needCache: false, cache: {}
@@ -260,33 +261,63 @@ var savedLockControl = null; // 打开查看器前保存的游戏控制锁定状
                 });
             });
 
-            if (!core.hasFlag("no_betweenAttack")) {
-                var size = geometry.size(floorId);
-                for (var y = 0; y < size.height; y++) {
-                    for (var x = 0; x < size.width; x++) {
-                        var center = state(floorId, x, y, "up");
-                        var matched = [];
-                        [["left", "right"], ["up", "down"]].forEach(function (pair) {
-                            var a = geometry.step(center, pair[0]);
-                            var b = geometry.step(center, pair[1]);
-                            var idA = core.getFaceDownId(getBlock(a));
-                            var idB = core.getFaceDownId(getBlock(b));
-                            if (idA && idA === idB && core.hasSpecial(idA, 16)) matched.push({ id: idA, point: a });
+            return info;
+        }
+
+        // 夹击（betweenAttack）：仅依赖 hero.hp 与几何阶段已算出的 info.damage，
+        // 不触及任何几何 raycast；在几何 info 副本上叠加，结果与现算逐格一致。
+        function applyBetweenAttack(info, floorId) {
+            if (core.hasFlag("no_betweenAttack")) return;
+            var heroHp = core.status.hero ? core.status.hero.hp : 0;
+            var size = geometry.size(floorId);
+            for (var y = 0; y < size.height; y++) {
+                for (var x = 0; x < size.width; x++) {
+                    var center = state(floorId, x, y, "up");
+                    var matched = [];
+                    [["left", "right"], ["up", "down"]].forEach(function (pair) {
+                        var a = geometry.step(center, pair[0]);
+                        var b = geometry.step(center, pair[1]);
+                        var idA = core.getFaceDownId(getBlock(a));
+                        var idB = core.getFaceDownId(getBlock(b));
+                        if (idA && idA === idB && core.hasSpecial(idA, 16)) matched.push({ id: idA, point: a });
+                    });
+                    if (!matched.length) continue;
+                    var key = x + "," + y;
+                    var value = Math.floor((heroHp - (info.damage[key] || 0)) / 2);
+                    if (core.flags.betweenAttackMax) {
+                        matched.forEach(function (one) {
+                            var enemyDamage = core.getDamage(one.id, one.point.x, one.point.y, one.point.floorId);
+                            if (enemyDamage != null) value = Math.min(value, enemyDamage);
                         });
-                        if (!matched.length) continue;
-                        var key = x + "," + y;
-                        var value = Math.floor((core.status.hero.hp - (info.damage[key] || 0)) / 2);
-                        if (core.flags.betweenAttackMax) {
-                            matched.forEach(function (one) {
-                                var enemyDamage = core.getDamage(one.id, one.point.x, one.point.y, one.point.floorId);
-                                if (enemyDamage != null) value = Math.min(value, enemyDamage);
-                            });
-                        }
-                        if (value > 0) addDamage(info, center, value, "夹击伤害");
                     }
+                    if (value > 0) addDamage(info, center, value, "夹击伤害");
                 }
             }
-            return info;
+        }
+
+        // 浅复制几何 info 供夹击叠加：damage/type 会被夹击修改故深拷贝；
+        // repulse/ambush/chase 仅被游戏只读消费，共享引用省开销；cache 会被
+        // functions.js 原地写入（光环/支援缓存），必须换新对象避免污染几何缓存。
+        function cloneCheckBlockInfo(src) {
+            var type = {};
+            for (var k in src.type) {
+                if (!src.type.hasOwnProperty(k)) continue;
+                var labels = {};
+                for (var l in src.type[k]) {
+                    if (!src.type[k].hasOwnProperty(l)) continue;
+                    labels[l] = true;
+                }
+                type[k] = labels;
+            }
+            return {
+                damage: Object.assign({}, src.damage),
+                type: type,
+                repulse: src.repulse,
+                ambush: src.ambush,
+                chase: src.chase,
+                needCache: src.needCache,
+                cache: {}
+            };
         }
 
         function relocateBlock(source, destination) {
