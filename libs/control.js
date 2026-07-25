@@ -762,6 +762,12 @@ control.prototype._moveHero_moving = function () {
     core.status.heroStop = false;
     core.status.automaticRoute.moveDirectly = false;
     var move = function () {
+        // 单格动画结束时 setHeroMoveInterval 会把 heroStop 置 true（用于 isMoving/replay 判断“已静止”），
+        // 但只要自动寻路仍有后续步数，就重置 heroStop 继续走下一格，否则会“每次只能走一格”。
+        if (core.status.heroStop) {
+            var ar = core.status.automaticRoute;
+            if (ar && ar.autoHeroMove) core.status.heroStop = false;
+        }
         if (!core.status.heroStop) {
             if (core.hasFlag('debug') && core.status.ctrlDown) {
                 if (core.status.heroMoving != 0) return;
