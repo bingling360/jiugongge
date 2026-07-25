@@ -49,12 +49,28 @@
   #cube-close { position: fixed; top: max(12px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); z-index: 10000; width: 44px; height: 44px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.4); background: rgba(15,23,42,0.82); color: #fff; font-size: 22px; line-height: 1; display: none; align-items: center; justify-content: center; cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent; box-shadow: 0 3px 14px rgba(0,0,0,0.4); }
   #cube-close:active { background: #2563eb; transform: scale(0.94); }
   @media (pointer:coarse),(max-width:760px){ #cube-close{ display:flex; } }
+  /* 左侧面板折叠/展开箭头按钮 */
+  #panel-toggle { position: fixed; top: 14px; left: 380px; z-index: 10001; width: 24px; height: 42px; border: 1px solid #2a2a3a; border-left: none; background: #161620; color: #9fb8ff; cursor: pointer; border-radius: 0 6px 6px 0; display: flex; align-items: center; justify-content: center; font-size: 16px; line-height: 1; transition: left 0.25s ease, top 0.25s ease, background 0.15s, color 0.15s; user-select: none; box-shadow: 2px 2px 8px rgba(0,0,0,0.35); }
+  #panel-toggle:hover { background: #242430; color: #cfe0ff; }
+  #panel-toggle .arrow { display: inline-block; transition: transform 0.25s ease; }
+  body.panel-collapsed #panel-left { display: none; }
+  body.panel-collapsed #panel-right { height: 100vh; }
+  body.panel-collapsed #panel-toggle { left: 0; border-left: 1px solid #2a2a3a; border-radius: 6px 0 0 6px; box-shadow: -2px 2px 8px rgba(0,0,0,0.35); }
+  body.panel-collapsed #panel-toggle .arrow { transform: rotate(180deg); }
+  /* 手机端：缩略图在上，向上折叠为顶部小标签，向下展开 */
+  @media (pointer:coarse),(max-width:720px){
+    #panel-toggle { display: flex; top: 40vh; left: 50%; transform: translateX(-50%); width: 56px; height: 26px; border: 1px solid #2a2a3a; border-bottom: none; border-radius: 8px 8px 0 0; box-shadow: 0 -2px 8px rgba(0,0,0,0.35); font-size: 14px; }
+    body.panel-collapsed #panel-toggle { top: 0; left: 50%; transform: translateX(-50%); border: 1px solid #2a2a3a; border-top: none; border-radius: 0 0 8px 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.35); }
+    #panel-toggle .arrow { transform: rotate(90deg); }
+    body.panel-collapsed #panel-toggle .arrow { transform: rotate(-90deg); }
+  }
 
 </style>
 </head>
 <body>
 <div id="loading"><div class="spinner"></div><p>加载 3D 场景...</p></div>
 <button id="cube-close" aria-label="关闭 3D 地图" title="关闭">✕</button>
+<button id="panel-toggle" aria-label="收起/展开左侧面板" title="收起/展开面板"><span class="arrow">‹</span></button>
 
 <div id="app">
   <div id="panel-left">
@@ -478,12 +494,12 @@ camera.position.set(3.6, 2.6, 4.6);
 
 var renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(container.clientWidth, container.clientHeight);
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 3));
 renderer.setClearColor(0x0a0a14, 1);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.25;
+renderer.toneMappingExposure = 1.05;
 container.appendChild(renderer.domElement);
 
 // WebGL 上下文丢失/恢复兜底：
@@ -516,9 +532,6 @@ dl.position.set(5, 10, 7); dl.castShadow = true; scene.add(dl);
 var fl = new THREE.DirectionalLight(0xbfe0ff, 0.8); fl.position.set(-3, 1, -5); scene.add(fl);
 var rl = new THREE.DirectionalLight(0xbfe0ff, 0.55); rl.position.set(-2, -3, 4); scene.add(rl);
 
-var ring = new THREE.Mesh(new THREE.RingGeometry(0.3, 2.0, 48), new THREE.MeshBasicMaterial({ color: 0x224488, transparent: true, opacity: 0.1, side: THREE.DoubleSide, depthWrite: false }));
-ring.rotation.x = -Math.PI / 2; ring.position.y = -1.05; scene.add(ring);
-
 var cubeSize = 2;
 var faceGroup = new THREE.Group();
 scene.add(faceGroup);
@@ -534,7 +547,7 @@ var faceConfigs = [
 ];
 
 function buildFaceTexture(fid) {
-  var S = 1024; // 提高面贴图分辨率以获得更清晰的效果
+  var S = 2048; // 提高面贴图分辨率以获得更清晰的效果
   var c = document.createElement("canvas");
   c.width = S; c.height = S;
   var ctx = c.getContext("2d");
@@ -597,6 +610,13 @@ function buildFaceTexture(fid) {
   ctx.fillStyle = "rgba(255,255,255,0.12)";
   ctx.font = (S * 0.027) + 'px "Courier New",monospace';
   ctx.fillText(fid, S / 2, S * 0.96);
+  // 提高色彩饱和度，使 3D 模型更鲜明
+  var satCanvas = document.createElement("canvas");
+  satCanvas.width = c.width; satCanvas.height = c.height;
+  var satCtx = satCanvas.getContext("2d");
+  satCtx.filter = "saturate(1.45)";
+  satCtx.drawImage(c, 0, 0);
+  c = satCanvas;
   var tex = new THREE.CanvasTexture(c);
   tex.minFilter = THREE.LinearMipmapLinearFilter;
   tex.magFilter = THREE.LinearFilter;
@@ -622,8 +642,6 @@ for (var i = 0; i < faceConfigs.length; i++) {
 }
 
 faceGroup.add(new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(cubeSize, cubeSize, cubeSize)), new THREE.LineBasicMaterial({ color: 0x4488cc, transparent: true, opacity: 0.25 })));
-var hlBox = new THREE.Mesh(new THREE.BoxGeometry(cubeSize * 1.04, cubeSize * 1.04, cubeSize * 1.04), new THREE.MeshBasicMaterial({ color: 0x4488ff, transparent: true, opacity: 0.1, side: THREE.BackSide }));
-faceGroup.add(hlBox);
 
 // 星空背景
 var sp = new Float32Array(1200 * 3);
@@ -654,21 +672,7 @@ function getFace(event) {
 
 renderer.domElement.addEventListener("pointermove", function (e) {
   var fid = getFace(e);
-  var keys = Object.keys(faceMeshes);
-  for (var fi = 0; fi < keys.length; fi++) {
-    var k = keys[fi];
-    if (k !== currentFace) {
-      faceMeshes[k].material.emissive = new THREE.Color(0x000000);
-      faceMeshes[k].material.emissiveIntensity = 0;
-    }
-  }
-  if (fid && fid !== currentFace) {
-    faceMeshes[fid].material.emissive = new THREE.Color(0x4488ff);
-    faceMeshes[fid].material.emissiveIntensity = 0.1;
-    renderer.domElement.style.cursor = "pointer";
-  } else {
-    renderer.domElement.style.cursor = "default";
-  }
+  renderer.domElement.style.cursor = fid ? "pointer" : "default";
 });
 
 renderer.domElement.addEventListener("click", function (e) {
@@ -683,13 +687,9 @@ window.selectFace = function (fid) {
   if (currentFace === fid) return;
   if (currentFace && faceMeshes[currentFace]) {
     faceMeshes[currentFace].userData.isSelected = false;
-    faceMeshes[currentFace].material.emissive = new THREE.Color(0x000000);
-    faceMeshes[currentFace].material.emissiveIntensity = 0;
   }
   currentFace = fid;
   faceMeshes[fid].userData.isSelected = true;
-  faceMeshes[fid].material.emissive = new THREE.Color(0x4488ff);
-  faceMeshes[fid].material.emissiveIntensity = 0.18;
   drawThumbnail(fid);
 };
 
@@ -783,7 +783,6 @@ window.addEventListener("message", function (e) {
 function animate() {
   animationId = requestAnimationFrame(animate);
   controls.update();
-  ring.rotation.z += 0.001;
   renderer.render(scene, camera);
 }
 
@@ -796,8 +795,6 @@ var params = new URLSearchParams(location.search);
 var startFace = params.get("floor");
 if (!startFace || !faceMeshes[startFace]) startFace = "MT0";
 
-faceMeshes[startFace].material.emissive = new THREE.Color(0x4488ff);
-faceMeshes[startFace].material.emissiveIntensity = 0.18;
 faceMeshes[startFace].userData.isSelected = true;
 currentFace = startFace;
 
@@ -815,6 +812,15 @@ if (closeBtn) {
     } else {
       window.close();
     }
+  });
+}
+
+// 左侧面板折叠/展开：关闭时面板隐藏、3D 占满并自动居中；打开时面板回到右侧
+var panelToggle = document.getElementById("panel-toggle");
+if (panelToggle) {
+  panelToggle.addEventListener("click", function () {
+    document.body.classList.toggle("panel-collapsed");
+    onResize();
   });
 }
 
