@@ -42,11 +42,48 @@ main.floors.MT0=
     ],
     "parallelDo": "",
     "events": {
-        "7,7": [
-            "本塔为实验ai造塔能力边界的作品，bug很多，遇到了可以进行反馈，但不一定能保证修复"
-        ],
         "7,5": [
-            "机关门事件开启条件如下：\n顶面击败所有骷髅士兵开启机关门\n底面击败所有初级法师和石头人开启机关门\n左面击败所有初级卫兵开启机关门\n右面击败所有初级卫兵开启机关门\n追猎，阻击，领域，激光，夹击，破墙镐，炸弹，开门，全都能跨层生效\n伯伯是加6防减9攻，商人是加6攻减9防"
+            "机关门事件开启条件如下：\n顶面击败所有骷髅士兵开启机关门\n底面击败所有初级法师和石头人开启机关门\n左面击败所有初级卫兵开启机关门\n右面击败所有初级卫兵开启机关门\n追猎，阻击，领域，激光，夹击，破墙镐，炸弹，开门，全都能跨层生效\n伯伯是加6防减9攻，商人是加6攻减9防\n本塔为实验ai造塔能力边界的作品，bug很多，遇到了可以进行反馈，但不一定能保证修复"
+        ],
+        "7,7": [
+            {
+                "type": "if",
+                "condition": "flag:difficulty",
+                "true": [
+                    {
+                        "type": "text",
+                        "text": "\t[难度精灵,wizard]你已选择过难度（${flag:difficulty == 'easy' ? '简单' : '普通'}）。\n难度只能选择一次，无法更改。"
+                    }
+                ],
+                "false": [
+                    {
+                        "type": "choices",
+                        "text": "\t[难度精灵,wizard]你遇到了一位难度精灵。\n选择你的难度吧！（难度只能选择一次）",
+                        "choices": [
+                            {
+                                "text": "简单难度（禁用地图伤害）",
+                                "action": [
+                                    { "type": "setValue", "name": "flag:difficulty", "value": "'easy'" },
+                                    { "type": "setValue", "name": "flag:no_zone", "value": "true" },
+                                    { "type": "setValue", "name": "flag:no_laser", "value": "true" },
+                                    { "type": "setValue", "name": "flag:no_betweenAttack", "value": "true" },
+                                    { "type": "setValue", "name": "flag:no_repulse_damage", "value": "true" },
+                                    { "type": "setValue", "name": "flag:endingName", "value": "'简单'" },
+                                    { "type": "text", "text": "\t[难度精灵,wizard]你选择了【简单】难度！\n所有地图伤害（激光/阻击/夹击/领域）已禁用，但阻击仍会把你击退。" }
+                                ]
+                            },
+                            {
+                                "text": "普通难度（保持原样）",
+                                "action": [
+                                    { "type": "setValue", "name": "flag:difficulty", "value": "'normal'" },
+                                    { "type": "setValue", "name": "flag:endingName", "value": "'普通'" },
+                                    { "type": "text", "text": "\t[难度精灵,wizard]你选择了【普通】难度！\n一切保持原样。" }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
         ]
     },
     "changeFloor": {},

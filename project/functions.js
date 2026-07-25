@@ -1379,6 +1379,7 @@ var functions_d6ad677b_427a_4623_b50f_a445a3b0ef8a =
 			core.setStatusBarInnerHTML('pickaxe', "破" + core.itemCount('pickaxe'));
 			core.setStatusBarInnerHTML('bomb', "炸" + core.itemCount('bomb'));
 			core.setStatusBarInnerHTML('fly', "飞" + core.itemCount('centerFly'));
+			core.setStatusBarInnerHTML('jump', "跳" + core.itemCount('jumpShoes'));
 
 			// 难度
 			if (core.statusBar.hard.innerText != core.status.hard) {

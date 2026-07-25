@@ -203,6 +203,7 @@ function main () {
         'pickaxe': document.getElementById('pickaxe'),
         'bomb': document.getElementById('bomb'),
         'fly': document.getElementById('fly'),
+        'jump': document.getElementById('jump'),
         'hard': document.getElementById("hard")
     }
     this.floors = {}

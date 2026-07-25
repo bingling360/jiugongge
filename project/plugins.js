@@ -5110,6 +5110,14 @@ var plugins_bb40132b_638b_4a9f_b028_d3fe47acc8d1 =
 				text: '拾取地上物品前自动存档。',
 				replay: false,
 			},
+			autoSaveBeforeChase: {
+				getName: () => '触发追猎自动保存:' + (core.getLocalStorage('autoSaveBeforeChase') ? '开' : '关'),
+				effect: () => {
+					invertLocalStorage('autoSaveBeforeChase');
+				},
+				text: '踏入会触发追猎的格子前自动存档，可有效防止被追猎。',
+				replay: false,
+			},
 		}
 
 		class GamePlay extends SettingOnePage {
@@ -5145,9 +5153,10 @@ var plugins_bb40132b_638b_4a9f_b028_d3fe47acc8d1 =
 				['2,4', 'skipPeform', new SettingButton(220, 305, 150, 25)],
 				['1,5', 'comment', new SettingButton(40, 330, 150, 25)],
 				['2,5', 'autoHideFloor', new SettingButton(220, 330, 150, 25)],
-				['1,6', 'autoSaveBeforeUseItem', new SettingButton(40, 355, 150, 25)],
-				['2,6', 'autoSaveBeforePickItem', new SettingButton(220, 355, 150, 25)],
-			]);
+			['1,6', 'autoSaveBeforeUseItem', new SettingButton(40, 355, 150, 25)],
+			['2,6', 'autoSaveBeforePickItem', new SettingButton(220, 355, 150, 25)],
+			['1,7', 'autoSaveBeforeChase', new SettingButton(40, 380, 150, 25)],
+		]);
 			return gamePlayMenu;
 		}
 		// #endregion

@@ -226,6 +226,10 @@
     font: bold italic 1.1em Verdana;
     display: inline;
 }
+#pzfCol .statusLabel{
+    font-size: 0.8em !important;
+    margin-left: 3px !important;
+}
 #statusBar p {
     user-select: none;
     display: inline-block;

@@ -221,7 +221,9 @@
                         geometry.neighbors(source, !!enemy.zoneSquare).forEach(function (entry) {
                             var point = entry.state;
                             if (point.floorId !== floorId) return;
-                            addDamage(info, point, enemy.repulse || 0, "阻击伤害");
+                            // no_repulse_damage：仅禁用阻击伤害，但保留阻击的击退（后退）效果
+                            if (!core.hasFlag("no_repulse_damage"))
+                                addDamage(info, point, enemy.repulse || 0, "阻击伤害");
                             var awayDirection = geometry.opposite(entry.direction);
                             var destinations = geometry.neighborsInDirection(source, awayDirection)
                                 .map(function (one) { return one.state; }).filter(isMonsterDestinationEmpty);
@@ -1571,7 +1573,7 @@
             // 显伤颜色随英雄当前生命在阈值(hp/3、2hp/3、hp)间变化（enemys.js getDamageString），
             // 故必须纳入签名；否则捡血瓶/受治疗后颜色会“残留”旧值，直到打怪才刷新。
             parts.push("hero=" + (hero ? (hero.hp + "|" + hero.def + "|" + hero.atk) : "none"));
-            ["displayEnemyDamage", "displayExtraDamage", "displayCritical", "extraDamageType"].forEach(function (f) {
+            ["displayEnemyDamage", "displayExtraDamage", "displayCritical", "extraDamageType", "no_repulse_damage", "no_zone", "no_laser", "no_betweenAttack"].forEach(function (f) {
                 parts.push(f + "=" + (core.hasFlag(f) ? 1 : 0));
             });
             parts.push("displayData=" + getDamageSettingString("displayData"));
@@ -1648,7 +1650,7 @@
                 var hero = core.status.hero;
                 // 夹击伤害 = floor(heroHp/2)，必须纳入，否则受治疗后数值会残留旧值
                 parts.push("heroHp=" + (hero ? hero.hp : "none"));
-                ["no_zone", "no_repulse", "no_laser", "no_ambush", "no_betweenAttack"].forEach(function (f) {
+                ["no_zone", "no_repulse", "no_laser", "no_ambush", "no_betweenAttack", "no_repulse_damage"].forEach(function (f) {
                     parts.push(f + "=" + (core.hasFlag(f) ? 1 : 0));
                 });
                 parts.push("amulet=" + (core.hasItem("amulet") ? 1 : 0));

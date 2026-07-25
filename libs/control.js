@@ -679,6 +679,10 @@ control.prototype.moveAction = function (callback) {
             core.getBlockCls(nextX, nextY) === 'items') {
             needAutoSave = true;
         }
+        else if (core.getLocalStorage('autoSaveBeforeChase') && !core.hasFlag('no_chase') &&
+            core.status.checkBlock && core.status.checkBlock.chase && core.status.checkBlock.chase[nextX + ',' + nextY] && core.status.checkBlock.chase[nextX + ',' + nextY].length > 0) {
+            needAutoSave = true; // 踏入触发追猎的格子前自动存档
+        }
         if (needAutoSave) {
             core.status.route.push(`turn:${dir}`); // 保存触发转向后的方向
             core.control.autosave();
