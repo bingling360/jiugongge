@@ -228,7 +228,10 @@ var plugins_bb40132b_638b_4a9f_b028_d3fe47acc8d1 =
 					"text": choice.text,
 					"icon": choice.icon,
 					"color": ableToBuy && !previewMode ? choice.color : [153, 153, 153, 1],
-					"action": ableToBuy && !previewMode ? [{ "type": "playSound", "name": "商店" }].concat(choice.action) : [
+					"action": ableToBuy && !previewMode ? [{ "type": "playSound", "name": "商店" }].concat(choice.action || [], [{
+						"type": "function",
+						"function": "function() { var p = core.plugin && core.plugin.cubeWorld; if (p && p.refreshDamage) p.refreshDamage(); }"
+					}]) : [
 						{ "type": "playSound", "name": "操作失败" },
 						{ "type": "tip", "text": previewMode ? "预览模式下不可购买" : "购买条件不足" }
 					]

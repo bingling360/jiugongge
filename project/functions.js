@@ -457,6 +457,7 @@ var functions_d6ad677b_427a_4623_b50f_a445a3b0ef8a =
 
 				// 删除该点设置的怪物信息
 				delete ((flags.enemyOnPoint || {})[floorId] || {})[x + "," + y];
+				core.control.invalidateDamageCache(); // 怪物被删除，显伤数值缓存失效
 
 				// 因为removeBlock和hideBlock都会刷新状态栏，因此将删除部分移动到这里并保证刷新只执行一次，以提升效率
 				if (core.getBlock(x, y, floorId) != null) {
@@ -592,6 +593,7 @@ var functions_d6ad677b_427a_4623_b50f_a445a3b0ef8a =
 					return "怪物每次攻击对角色生命造成的实际伤害，有" + Math.floor((enemy.absorbValue || 0) * 100)
 						+ "%转化为自身生命；被护盾抵消的伤害不会回复。";
 				}, "#d45a9e"],
+				[48, "卸力", "防御力提升，提升值为角色攻击力的30%", "#c0ddbb"],
 			];
 		},
 		"getEnemyInfo": function (enemy, hero, x, y, floorId) {
@@ -623,12 +625,17 @@ var functions_d6ad677b_427a_4623_b50f_a445a3b0ef8a =
 				mon_atk = hero_atk;
 				mon_def = hero_def;
 			}
-			// 坚固
-			if (core.hasSpecial(mon_special, 3) && mon_def < hero_atk - 1) {
-				mon_def = hero_atk - 1;
-			}
+		// 坚固
+		if (core.hasSpecial(mon_special, 3) && mon_def < hero_atk - 1) {
+			mon_def = hero_atk - 1;
+		}
 
-			var guards = [];
+		// 卸力
+		if (core.hasSpecial(mon_special, 48)) {
+			mon_def += hero_atk * 0.3;
+		}
+
+		var guards = [];
 
 			// 光环和支援检查
 			if (!core.status.checkBlock) core.status.checkBlock = {};

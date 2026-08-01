@@ -2636,7 +2636,7 @@ maps.prototype._initDetachedBlock = function (blockInfo, x, y, displayDamage) {
         ctx.font = "bold 11px Arial";
         core.fillBoldText(ctx, damage, 1, 31, damageColor);
         if (core.flags.displayCritical) {
-            var critical = core.enemys.nextCriticals(blockInfo.id);
+            var critical = core.enemys.nextCriticals(blockInfo.id, 1, x, y);
             if (critical.length > 0) critical = critical[0];
             critical = core.formatBigNumber(critical[0], true);
             if (critical == '???') critical = '?';

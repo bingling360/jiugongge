@@ -357,13 +357,35 @@ main.prototype.loadJs = function (dir, loadList, callback) {
 
 ////// 加载某一个JS文件 //////
 main.prototype.loadMod = function (dir, modName, callback, onerror) {
-    var script = document.createElement('script');
     var name = modName;
-    script.src = dir + '/' + modName + (this.useCompress ? ".min" : "") + '.js?v=' + this.version;
-    script.onload = function () {
-        callback(name);
+    var base = dir + '/' + modName + (this.useCompress ? ".min" : "") + '.js';
+    // 自动重试：可缓解偶发的 HTTP/2 流中断（ERR_HTTP2_PROTOCOL_ERROR）
+    var attempt = 0, maxAttempts = 3;
+    function tryLoad() {
+        var script = document.createElement('script');
+        // 每次重试追加随机参数，强制新建请求、避开损坏的连接/缓存响应
+        script.src = base + '?v=' + main.version + '&retry=' + attempt + '_' + Date.now();
+        script.onload = function () {
+            callback(name);
+        };
+        script.onerror = function (e) {
+            attempt++;
+            if (attempt < maxAttempts) {
+                main.setMainTipsText('加载 ' + modName + '.js 失败，正在重试 (' + attempt + '/' + maxAttempts + ')...');
+                console.warn('加载失败，自动重试: ' + base, e);
+                setTimeout(tryLoad, 300 * attempt);
+            }
+            else if (onerror) {
+                onerror(name, e);
+            }
+            else {
+                main.setMainTipsText('加载 ' + modName + '.js 失败：请刷新页面，或检查服务器 HTTP/2/gzip 配置（ERR_HTTP2_PROTOCOL_ERROR）');
+                console.error('加载失败（已重试 ' + maxAttempts + ' 次）: ' + base, e);
+            }
+        };
+        main.dom.body.appendChild(script);
     }
-    main.dom.body.appendChild(script);
+    tryLoad();
 }
 
 ////// 动态加载所有楼层（剧本） //////
@@ -373,12 +395,16 @@ main.prototype.loadFloors = function (callback) {
     main.setMainTipsText('正在加载楼层文件...')
     if (this.useCompress) { // 读取压缩文件
         var script = document.createElement('script');
-        script.src = 'project/floors.min.js?v=' + this.version;
+        script.src = 'project/floors.min.js?v=' + this.version + '&retry=0_' + Date.now();
         main.dom.body.appendChild(script);
         script.onload = function () {
             main.dom.mainTips.style.display = 'none';
             callback();
         }
+        script.onerror = function (e) {
+            main.setMainTipsText('加载 floors.min.js 失败：请刷新页面，或检查服务器 HTTP/2/gzip 配置（ERR_HTTP2_PROTOCOL_ERROR）');
+            console.error('加载失败: project/floors.min.js', e);
+        };
         return;
     }
 

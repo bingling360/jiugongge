@@ -1416,9 +1416,35 @@ control.prototype.updateDamage = function (floorId, ctx) {
         // 地图过大的缩略图不绘制显伤
         if (width * height > core.bigmap.threshold) return;
     }
+    // 显伤数值缓存：仅当「勇士攻防血 / 楼层 / 显伤开关 / 怪物覆盖属性 / 怪物数量」变化时，才重算数值；
+    // 纯移动（攻防血不变）时复用上次的 data，跳过 _updateDamage_damage 的遍历与伤害重算。
+    // data 中的 px/py 为地图格坐标（不随 viewport 变化），drawDamage 内部已按 viewport 平移，故可直接复用。
+    if (core.status.damage._cacheKey == null) core.status.damage._cacheKey = "";
+    if (core.status.damage._eopVersion == null) core.status.damage._eopVersion = 0;
+    const hero = core.status.hero;
+    core.extractBlocks(floorId);
+    let enemyCount = 0;
+    core.status.maps[floorId].blocks.forEach(function (b) {
+        if (b.event.cls.indexOf('enemy') == 0) enemyCount++;
+    });
+    const key = [hero.atk, hero.def, hero.mdef, hero.hp, floorId,
+        core.flags.displayEnemyDamage, core.flags.displayCritical,
+        core.flags.displayExtraDamage, core.flags.extraDamageType,
+        core.status.damage._eopVersion, enemyCount].join("|");
+    if (key === core.status.damage._cacheKey && core.status.damage.data) {
+        this.drawDamage(ctx); // 数值未变，仅重绘（位置随 viewport 由 drawDamage 处理）
+        return;
+    }
+    core.status.damage._cacheKey = key;
     this._updateDamage_damage(floorId, onMap);
     this._updateDamage_extraDamage(floorId, onMap);
     this.drawDamage(ctx);
+}
+
+// 怪物覆盖属性（enemyOnPoint）变化后调用，使显伤缓存失效
+control.prototype.invalidateDamageCache = function () {
+    if (core.status.damage) core.status.damage._eopVersion = (core.status.damage._eopVersion || 0) + 1;
+    if (core.status.damage) core.status.damage._cacheKey = null;
 }
 
 control.prototype.getEnemyValueString = function(name, blockId, x, y, floorId) {

@@ -334,11 +334,14 @@ var savedLockControl = null; // 打开查看器前保存的游戏控制锁定状
         }
 
         function refreshDamage() {
-            if (!core.status || !isFace(core.status.floorId)) return;
-            core.updateCheckBlock(core.status.floorId);
+            if (!core.status) return;
+            if (isFace(core.status.floorId)) core.updateCheckBlock(core.status.floorId);
+            // 强制绕过签名缓存：本次显伤必须立即重算（商店加盾 / 隐士献祭等场景），
+            // 否则即便签名因上述字段被纳入而“本应”变化，旧签名残留仍可能跳过重算。
+            damageCache.signature = null;
             core.updateDamage();
             core.redrawMap();
-            refreshViewer();
+            if (isFace(core.status.floorId)) refreshViewer();
         }
 
         function executeMonsterMove(record) {
@@ -1609,10 +1612,14 @@ var savedLockControl = null; // 打开查看器前保存的游戏控制锁定状
             var hero = core.status.hero;
             // 显伤颜色随英雄当前生命在阈值(hp/3、2hp/3、hp)间变化（enemys.js getDamageString），
             // 故必须纳入签名；否则捡血瓶/受治疗后颜色会“残留”旧值，直到打怪才刷新。
-            parts.push("hero=" + (hero ? (hero.hp + "|" + hero.def + "|" + hero.atk) : "none"));
+            // 护盾(mdef)直接影响怪物对英雄的显伤，购买护盾后也必须纳入签名，否则显伤不刷新。
+            parts.push("hero=" + (hero ? (hero.hp + "|" + hero.def + "|" + hero.atk + "|" + hero.mdef) : "none"));
             ["displayEnemyDamage", "displayExtraDamage", "displayCritical", "extraDamageType", "no_repulse_damage", "no_zone", "no_laser", "no_betweenAttack"].forEach(function (f) {
                 parts.push(f + "=" + (core.hasFlag(f) ? 1 : 0));
             });
+            // 隐士献祭通过 recluseDeductP 标志降低花妖血量（applyCubeAura），
+            // 该标志不参与敌人 block 的事件属性，必须显式纳入签名，否则献祭后显伤仍“残留”旧值。
+            parts.push("recluseDeductP=" + (core.getFlag("recluseDeductP", 0) || 0));
             parts.push("displayData=" + getDamageSettingString("displayData"));
             parts.push("specialIcon=" + getDamageSettingString("specialIconData"));
             var blocks = (core.status.maps[floorId] && core.status.maps[floorId].blocks) || [];

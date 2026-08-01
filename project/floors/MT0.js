@@ -63,21 +63,59 @@ main.floors.MT0=
                             {
                                 "text": "简单难度（禁用地图伤害）",
                                 "action": [
-                                    { "type": "setValue", "name": "flag:difficulty", "value": "'easy'" },
-                                    { "type": "setValue", "name": "flag:no_zone", "value": "true" },
-                                    { "type": "setValue", "name": "flag:no_laser", "value": "true" },
-                                    { "type": "setValue", "name": "flag:no_betweenAttack", "value": "true" },
-                                    { "type": "setValue", "name": "flag:no_repulse_damage", "value": "true" },
-                                    { "type": "setValue", "name": "flag:endingName", "value": "'简单'" },
-                                    { "type": "text", "text": "\t[难度精灵,wizard]你选择了【简单】难度！\n所有地图伤害（激光/阻击/夹击/领域）已禁用，但阻击仍会把你击退。" }
+                                    {
+                                        "type": "setValue",
+                                        "name": "flag:difficulty",
+                                        "value": "'easy'"
+                                    },
+                                    {
+                                        "type": "setValue",
+                                        "name": "flag:no_zone",
+                                        "value": "true"
+                                    },
+                                    {
+                                        "type": "setValue",
+                                        "name": "flag:no_laser",
+                                        "value": "true"
+                                    },
+                                    {
+                                        "type": "setValue",
+                                        "name": "flag:no_betweenAttack",
+                                        "value": "true"
+                                    },
+                                    {
+                                        "type": "setValue",
+                                        "name": "flag:no_repulse_damage",
+                                        "value": "true"
+                                    },
+                                    {
+                                        "type": "setValue",
+                                        "name": "flag:endingName",
+                                        "value": "'简单'"
+                                    },
+                                    {
+                                        "type": "text",
+                                        "text": "\t[难度精灵,wizard]你选择了【简单】难度！\n所有地图伤害（激光/阻击/夹击/领域）已禁用，但阻击仍会把你击退。"
+                                    }
                                 ]
                             },
                             {
                                 "text": "普通难度（保持原样）",
                                 "action": [
-                                    { "type": "setValue", "name": "flag:difficulty", "value": "'normal'" },
-                                    { "type": "setValue", "name": "flag:endingName", "value": "'普通'" },
-                                    { "type": "text", "text": "\t[难度精灵,wizard]你选择了【普通】难度！\n一切保持原样。" }
+                                    {
+                                        "type": "setValue",
+                                        "name": "flag:difficulty",
+                                        "value": "'normal'"
+                                    },
+                                    {
+                                        "type": "setValue",
+                                        "name": "flag:endingName",
+                                        "value": "'普通'"
+                                    },
+                                    {
+                                        "type": "text",
+                                        "text": "\t[难度精灵,wizard]你选择了【普通】难度！\n一切保持原样。"
+                                    }
                                 ]
                             }
                         ]

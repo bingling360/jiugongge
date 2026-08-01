@@ -2541,10 +2541,16 @@ ui.prototype._drawBookDetail_hatred = function (enemy, texts) {
 }
 
 ui.prototype._drawBookDetail_turnAndCriticals = function (enemy, floorId, texts) {
-    var damageInfo = core.getDamageInfo(enemy.id, null, enemy.x, enemy.y, floorId);
+    // 解析怪物坐标：手册列表中坐标存于 locs[0]，而非 x/y
+    var ex = enemy.x, ey = enemy.y;
+    if ((ex == null || ey == null) && enemy.locs && enemy.locs.length) {
+        ex = enemy.locs[0][0];
+        ey = enemy.locs[0][1];
+    }
+    var damageInfo = core.getDamageInfo(enemy.id, null, ex, ey, floorId);
     texts.push("\r[#FF6A6A]\\d战斗回合数：\\d\r[]" + ((damageInfo || {}).turn || 0));
     // 临界表
-    var criticals = core.enemys.nextCriticals(enemy.id, 8, enemy.x, enemy.y, floorId).map(function (v) {
+    var criticals = core.enemys.nextCriticals(enemy.id, 8, ex, ey, floorId).map(function (v) {
         return core.formatBigNumber(v[0]) + ":" + core.formatBigNumber(v[1]);
     });
     while (criticals[0] == '0:0') criticals.shift();

@@ -3119,12 +3119,14 @@ events.prototype.setEnemyOnPoint = function (x, y, floorId, name, value, operato
     flags.enemyOnPoint[floorId][x + "," + y] = flags.enemyOnPoint[floorId][x + "," + y] || {};
     flags.enemyOnPoint[floorId][x + "," + y][name] = value;
     if (!norefresh) core.updateStatusBar();
+    core.control.invalidateDamageCache(); // 怪物覆盖属性变化，显伤数值缓存失效
 }
 
 ////// 重置某个点上的怪物属性 //////
 events.prototype.resetEnemyOnPoint = function (x, y, floorId, norefresh) {
     delete ((flags.enemyOnPoint || {})[floorId || core.status.floorId] || {})[x + "," + y];
     if (!norefresh) core.updateStatusBar();
+    core.control.invalidateDamageCache(); // 怪物覆盖属性变化，显伤数值缓存失效
 }
 
 ////// 将某个点上已经设置的怪物属性移动到其他点 //////
@@ -3136,6 +3138,7 @@ events.prototype.moveEnemyOnPoint = function (fromX, fromY, toX, toY, floorId, n
         flags.enemyOnPoint[toFloorId][toX + "," + toY] = flags.enemyOnPoint[floorId][fromX + "," + fromY];
         delete flags.enemyOnPoint[floorId][fromX + "," + fromY];
         if (!norefresh) core.updateStatusBar();
+        core.control.invalidateDamageCache(); // 怪物覆盖属性移动，显伤数值缓存失效
     }
 }
 
@@ -3149,8 +3152,9 @@ events.prototype.exchangeEnemyOnPoint = function (fromX, fromY, toX, toY, floorI
     const sourceEnemyOnFloor = flags.enemyOnPoint[floorId] || {};
     const targetEnemyOnFloor = flags.enemyOnPoint[toFloorId] || {};
     let fromInfo, toInfo;
-    if (sourceEnemyOnFloor.hasOwnProperty(spos)) fromInfo = core.clone(sourceEnemyOnFloor[spos]);
-    if (targetEnemyOnFloor.hasOwnProperty(aimpos)) toInfo = core.clone(targetEnemyOnFloor[aimpos]);
+    // 仅做整体搬移引用，不深拷贝：delta 对象搬完后各自落在不同坐标，互不共享，且调用方只读不改
+    if (sourceEnemyOnFloor.hasOwnProperty(spos)) fromInfo = sourceEnemyOnFloor[spos];
+    if (targetEnemyOnFloor.hasOwnProperty(aimpos)) toInfo = targetEnemyOnFloor[aimpos];
 
     // 删除旧位置信息
     if (fromInfo) delete sourceEnemyOnFloor[spos];
@@ -3167,6 +3171,7 @@ events.prototype.exchangeEnemyOnPoint = function (fromX, fromY, toX, toY, floorI
     }
 
     if (!norefresh) core.updateStatusBar();
+    core.control.invalidateDamageCache(); // 怪物覆盖属性交换，显伤数值缓存失效
 }
 
 

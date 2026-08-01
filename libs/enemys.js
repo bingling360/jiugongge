@@ -195,15 +195,19 @@ enemys.prototype.getEnemyValue = function (enemy, name, x, y, floorId) {
         enemy = core.material.enemys[enemy];
         if (enemy == null) return null;
     }
-    enemy = core.clone(enemy);
 
     if (!core.isset(name)) { // 仅name不填时返回该enemy的完整数据，有x,y将用该点信息覆盖core.material.enemys相应属性
-        for (let status in pointInfo) {
-            if (pointInfo.hasOwnProperty(status)) enemy[status] = pointInfo[status];
-        }
-        return enemy;
+        // 所有调用方（canBattle/getDamage/nextCriticals/getEnemyInfo 等）均只读取、从不修改返回对象，
+        // 故无需深拷贝/代理。pointInfo 为空时直接返回模板引用（零拷贝）；
+        // 有覆盖时做一次浅合并（仅拷贝第一层 key，不递归子对象），成本低且子对象只读安全。
+        if (Object.keys(pointInfo).length === 0) return enemy;
+        const merged = {};
+        for (const k in enemy) if (enemy.hasOwnProperty(k)) merged[k] = enemy[k];
+        for (const k in pointInfo) if (pointInfo.hasOwnProperty(k)) merged[k] = pointInfo[k];
+        return merged;
     }
-    else return enemy[name];
+    // 取单个属性：移动/显伤等热路径只读模板字段，直接返回引用，零拷贝
+    return pointInfo[name] != null ? pointInfo[name] : enemy[name];
 }
 
 ////// 能否获胜 //////
