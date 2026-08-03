@@ -137,6 +137,11 @@ var savedLockControl = null; // 打开查看器前保存的游戏控制锁定状
         // 全量重算激光/领域/追猎等几何遍历，正是 main 密集内容下移动卡顿的主因。
         // 这里用“状态签名”做记忆化：签名不变时直接返回上次结果，跳过几何遍历。
         var geoCache = {};
+        // 六面光环/护卫（applyCubeAura）原始实现会跨六面全图遍历每个 block 找光环源，
+        // 开销极高。光环源列表只随“敌人/地块”变化（已体现在几何签名里），故按几何签名
+        // 记忆化“光环源快照”，签名不变直接复用，省去每敌每格的全图 getBlocks/getEnemy 遍历。
+        // 纯只读缓存，不改变任何计算结果，也不触碰显伤/数据状态，零行为风险。
+        var auraSourceCache = {};
 
         function computeGeometrySignature(floorId) {
             var parts = [floorId];
@@ -1435,30 +1440,54 @@ var savedLockControl = null; // 打开查看器前保存的游戏控制锁定状
         function applyCubeAura(info, enemy, x, y, floorId) {
             if (!info || !isFace(floorId) || x == null || y == null) return info;
             var target = state(floorId, x, y, "up");
-            var hpBuff = 0, atkBuff = 0, defBuff = 0, usedEnemyIds = {}, guards = [];
-            CubeWorld.FACE_IDS.forEach(function (sourceFloorId) {
-                getBlocks(sourceFloorId).forEach(function (block) {
-                    var sourceEnemy = getEnemy(block, sourceFloorId);
-                    if (!sourceEnemy) return;
-                    var sourceEnemyId = sourceEnemy.id || block.event.id;
-                    var source = state(sourceFloorId, block.x, block.y, "up");
-                    if (core.hasSpecial(sourceEnemy.special, 25)) {
-                        var inRange = sourceEnemy.haloRange == null;
-                        if (sourceEnemy.haloRange != null) {
-                            inRange = geometry.distance(source, target, !!sourceEnemy.haloSquare, sourceEnemy.haloRange) <= sourceEnemy.haloRange;
+            // 光环源快照：按几何签名记忆化（签名含敌人 special/range/laser 等，源变化必反映）。
+            // 签名不变时直接复用，跳过跨六面全图遍历（原实现每敌每格都遍历一次，开销极高）。
+            var geo = geoCache[floorId];
+            var auraKey = geo ? geo.signature : null;
+            var sources = auraKey != null ? auraSourceCache[auraKey] : null;
+            if (!sources) {
+                sources = [];
+                CubeWorld.FACE_IDS.forEach(function (sourceFloorId) {
+                    getBlocks(sourceFloorId).forEach(function (block) {
+                        var sourceEnemy = getEnemy(block, sourceFloorId);
+                        if (!sourceEnemy) return;
+                        if (core.hasSpecial(sourceEnemy.special, 25) || core.hasSpecial(sourceEnemy.special, 26)) {
+                            sources.push({
+                                enemy: sourceEnemy,
+                                id: sourceEnemy.id || block.event.id,
+                                x: block.x, y: block.y, floorId: sourceFloorId,
+                                hpBuff: sourceEnemy.hpBuff || 0,
+                                atkBuff: sourceEnemy.atkBuff || 0,
+                                defBuff: sourceEnemy.defBuff || 0,
+                                haloRange: sourceEnemy.haloRange,
+                                haloSquare: !!sourceEnemy.haloSquare,
+                                haloAdd: sourceEnemy.haloAdd
+                            });
                         }
-                        if (inRange && (sourceEnemy.haloAdd || !usedEnemyIds[sourceEnemyId])) {
-                            hpBuff += sourceEnemy.hpBuff || 0;
-                            atkBuff += sourceEnemy.atkBuff || 0;
-                            defBuff += sourceEnemy.defBuff || 0;
-                            usedEnemyIds[sourceEnemyId] = true;
-                        }
-                    }
-                    if (core.hasSpecial(sourceEnemy.special, 26) && geometry.distance(source, target, true, 1) === 1) {
-                        guards.push({ floorId: sourceFloorId, x: block.x, y: block.y, id: block.event.id });
-                    }
+                    });
                 });
-            });
+                if (auraKey != null) auraSourceCache[auraKey] = sources;
+            }
+            var hpBuff = 0, atkBuff = 0, defBuff = 0, usedEnemyIds = {}, guards = [];
+            for (var i = 0; i < sources.length; i++) {
+                var s = sources[i];
+                if (core.hasSpecial(s.enemy.special, 25)) {
+                    var source = state(s.floorId, s.x, s.y, "up");
+                    var inRange = s.haloRange == null;
+                    if (s.haloRange != null) {
+                        inRange = geometry.distance(source, target, s.haloSquare, s.haloRange) <= s.haloRange;
+                    }
+                    if (inRange && (s.haloAdd || !usedEnemyIds[s.id])) {
+                        hpBuff += s.hpBuff;
+                        atkBuff += s.atkBuff;
+                        defBuff += s.defBuff;
+                        usedEnemyIds[s.id] = true;
+                    }
+                }
+                if (core.hasSpecial(s.enemy.special, 26) && geometry.distance(state(s.floorId, s.x, s.y, "up"), target, true, 1) === 1) {
+                    guards.push({ floorId: s.floorId, x: s.x, y: s.y, id: s.id });
+                }
+            }
             // 隐士献祭：铃兰花妖/郁金香花妖按道具扣除血量，与光环按加性百分比叠加
             var lilyDeduct = 0, lilyBaseHp = info.hp;
             if (enemy && (enemy.id === "keiskeiFairy" || enemy.id === "tulipFairy")) {
