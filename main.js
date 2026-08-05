@@ -887,13 +887,20 @@ main.prototype.listen = function () {
         else if (core.domStyle.toolbarBtn === 'num') main.core.setToolbarButton('normal');
     }
 
-    ////// 点击“开始游戏”时 //////
+    ////// 点击"开始游戏"时 //////
     main.dom.playGame.onclick = function () {
         main.dom.startButtons.style.display = 'none';
         main.core.control.checkBgm();
 
         if (main.levelChoose.length == 0) {
-            core.events.startGame("");
+            // 开场剧情演出：3 段对话 + 角色立绘，结束后再真正进入游戏
+            if (window.__intro && typeof window.__intro.play === 'function') {
+                window.__intro.play(function () {
+                    main.core.events.startGame("");
+                });
+            } else {
+                main.core.events.startGame("");
+            }
         } else {
             main.dom.levelChooseButtons.style.display = 'block';
             main.selectedButton = null;

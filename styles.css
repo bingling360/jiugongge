@@ -538,3 +538,177 @@ p#name {
     0% { opacity: 1 }
     100% { opacity: 0 }
 }
+
+/* ====== 开场剧情演出（角色立绘 + 对话气泡） ====== */
+#introOverlay {
+    position: fixed;
+    inset: 0;
+    z-index: 800;
+    background: linear-gradient(135deg, rgba(10, 16, 36, 0.92), rgba(20, 30, 70, 0.92));
+    display: none;
+    align-items: center;
+    justify-content: center;
+    user-select: none;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+    -webkit-tap-highlight-color: transparent;
+}
+
+#introOverlay.intro-show {
+    display: flex;
+    opacity: 1;
+}
+
+#introCard {
+    position: relative;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 32px;
+    max-width: 90vw;
+    max-height: 90vh;
+    padding: 24px;
+    box-sizing: border-box;
+}
+
+#introChar {
+    flex: 0 0 auto;
+    height: min(60vh, 460px);
+    width: auto;
+    object-fit: contain;
+    filter: drop-shadow(0 8px 24px rgba(0, 0, 0, 0.6));
+    animation: introCharIn 0.5s ease-out;
+}
+
+@keyframes introCharIn {
+    0% { transform: translateX(-40px) scale(0.92); opacity: 0; }
+    100% { transform: translateX(0) scale(1); opacity: 1; }
+}
+
+#introDialog {
+    position: relative;
+    flex: 0 1 auto;
+    max-width: 460px;
+    min-width: 280px;
+    padding: 28px 32px 36px;
+    background: linear-gradient(180deg, #fffaf0 0%, #fff3df 100%);
+    border: 4px solid #2a4ea0;
+    border-radius: 18px;
+    color: #2a2a2a;
+    font-size: 22px;
+    line-height: 1.7;
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5), inset 0 -6px 0 rgba(0, 0, 0, 0.06);
+    animation: introDialogIn 0.45s ease-out;
+}
+
+@keyframes introDialogIn {
+    0% { transform: translateX(40px); opacity: 0; }
+    100% { transform: translateX(0); opacity: 1; }
+}
+
+/* 对话气泡小尾巴（朝左指向角色图） */
+#introDialog::before {
+    content: '';
+    position: absolute;
+    left: -18px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 0;
+    height: 0;
+    border: 12px solid transparent;
+    border-right-color: #2a4ea0;
+}
+
+#introDialog::after {
+    content: '';
+    position: absolute;
+    left: -10px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 0;
+    height: 0;
+    border: 8px solid transparent;
+    border-right-color: #fffaf0;
+}
+
+#introSpeaker {
+    margin: 0 0 12px 0;
+    font-size: 18px;
+    font-weight: bold;
+    color: #2a4ea0;
+    letter-spacing: 1px;
+}
+
+#introText {
+    margin: 0;
+    font-size: 26px;
+    font-weight: 600;
+    color: #1a1a1a;
+    word-break: break-word;
+    white-space: pre-wrap;
+    min-height: 1.7em;
+}
+
+#introHint {
+    position: absolute;
+    right: 18px;
+    bottom: 10px;
+    margin: 0;
+    font-size: 13px;
+    color: #888;
+    animation: introBlink 1.4s ease-in-out infinite;
+}
+
+@keyframes introBlink {
+    0%, 100% { opacity: 0.45; }
+    50% { opacity: 1; }
+}
+
+#introProgress {
+    position: absolute;
+    bottom: 28px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 10px;
+    z-index: 1;
+}
+
+.intro-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.35);
+    border: 2px solid #2a4ea0;
+    transition: background 0.25s;
+}
+
+.intro-dot.active {
+    background: #2a4ea0;
+}
+
+/* 竖屏：上下堆叠 */
+@media (max-aspect-ratio: 3/4) {
+    #introCard {
+        flex-direction: column;
+        gap: 14px;
+    }
+    #introChar {
+        height: 38vh;
+    }
+    #introDialog {
+        max-width: 90vw;
+        padding: 20px 22px 30px;
+        font-size: 18px;
+    }
+    #introText {
+        font-size: 20px;
+    }
+    #introDialog::before, #introDialog::after {
+        display: none;
+    }
+    #introProgress {
+        bottom: 14px;
+    }
+}

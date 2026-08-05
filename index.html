@@ -312,6 +312,166 @@
 <div id='cube-map-overlay' style='display:none;position:fixed;inset:0;z-index:99999;background:#000;'>
   <button onclick='cubeMapClose()' style='position:absolute;top:16px;right:16px;z-index:10;background:rgba(0,0,0,.5);border:1px solid #4488ff;color:#fff;font-size:24px;width:44px;height:44px;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center'>&#x2715;</button>
 </div>
+<!-- 开场剧情演出层：在玩家点击"开始游戏"后弹出，三段对话 + 角色立绘，点屏幕/按Enter推进 -->
+<div id="introOverlay" onclick="introNext(event)">
+  <div id="introCard">
+    <img id="introChar" alt="角色立绘" />
+    <div id="introDialog">
+      <p id="introSpeaker">助手</p>
+      <p id="introText"></p>
+      <p id="introHint">点击屏幕继续 ▶</p>
+    </div>
+  </div>
+  <div id="introProgress">
+    <span class="intro-dot" data-i="0"></span>
+    <span class="intro-dot" data-i="1"></span>
+    <span class="intro-dot" data-i="2"></span>
+  </div>
+</div>
+<script>
+/* ====== 开场剧情演出：在 main.init('play') 之前就能用，挂到 window.__intro ====== */
+(function () {
+  // 三段剧情：角色图 + 旁白
+  // 图片使用缩放后的版本（项目自带），路径相对 index.html
+  var STEPS = [
+    {
+      speaker: '深海小助手',
+      text: '好无聊啊……',
+      img: 'project/images/intro/intro-1-bored.png'
+    },
+    {
+      speaker: '深海小助手',
+      text: '偷偷吃一点 token，应该没事吧？',
+      img: 'project/images/intro/intro-2-token.png'
+    },
+    {
+      speaker: '深海小助手',
+      text: '来写个魔塔玩一下吧！',
+      img: 'project/images/intro/intro-3-mota.png'
+    }
+  ];
+
+  var overlay, charEl, textEl, speakerEl, hintEl, dots;
+  var step = 0;
+  var onDone = null;
+  var busy = false; // 防止快速连点
+
+  function $(id) { return document.getElementById(id); }
+
+  function paint() {
+    var s = STEPS[step];
+    if (speakerEl) speakerEl.textContent = s.speaker;
+    if (textEl) textEl.textContent = s.text;
+    if (charEl) {
+      // 强制重新触发动画
+      charEl.style.animation = 'none';
+      // 触发 reflow
+      void charEl.offsetWidth;
+      charEl.style.animation = '';
+      charEl.src = s.img;
+    }
+    if (dots) {
+      for (var i = 0; i < dots.length; i++) {
+        if (i < step) dots[i].className = 'intro-dot';
+        else if (i === step) dots[i].className = 'intro-dot active';
+        else dots[i].className = 'intro-dot';
+      }
+    }
+  }
+
+  function finish() {
+    if (overlay) {
+      overlay.classList.remove('intro-show');
+      // 等待淡出后再隐藏
+      setTimeout(function () {
+        if (overlay) overlay.style.display = 'none';
+        step = 0;
+        paint();
+      }, 350);
+    }
+    var cb = onDone;
+    onDone = null;
+    if (typeof cb === 'function') {
+      try { cb(); } catch (e) { console.error('[intro] done callback error:', e); }
+    }
+  }
+
+  function advance() {
+    if (busy) return;
+    if (!overlay) return;
+    if (overlay.style.display === 'none' || overlay.style.display === '') {
+      // 还没开始，忽略
+      return;
+    }
+    step++;
+    if (step >= STEPS.length) {
+      busy = true;
+      finish();
+    } else {
+      paint();
+    }
+  }
+
+  // 暴露给 inline onclick
+  window.introNext = function (ev) {
+    if (ev) {
+      ev.stopPropagation();
+    }
+    advance();
+  };
+
+  // 键盘推进
+  document.addEventListener('keydown', function (e) {
+    if (!overlay || overlay.style.display === 'none') return;
+    if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar' || e.keyCode === 13 || e.keyCode === 32) {
+      e.preventDefault();
+      advance();
+    } else if (e.key === 'Escape' || e.keyCode === 27) {
+      // Esc 也允许跳到下一段（不能跳过剧情）
+      e.preventDefault();
+      advance();
+    }
+  }, true);
+
+  function play(callback) {
+    overlay = $('introOverlay');
+    charEl = $('introChar');
+    textEl = $('introText');
+    speakerEl = $('introSpeaker');
+    hintEl = $('introHint');
+    dots = overlay ? overlay.querySelectorAll('.intro-dot') : null;
+    if (!overlay) {
+      if (typeof callback === 'function') callback();
+      return;
+    }
+    step = 0;
+    onDone = callback || null;
+    busy = false;
+    paint();
+    overlay.style.display = 'flex';
+    // 强制 reflow 后加 class，触发过渡
+    void overlay.offsetWidth;
+    overlay.classList.add('intro-show');
+  }
+
+  // 预热（不显示），让首帧快
+  function preload() {
+    for (var i = 0; i < STEPS.length; i++) {
+      var im = new Image();
+      im.src = STEPS[i].img;
+    }
+  }
+
+  window.__intro = { play: play, preload: preload };
+
+  // DOM ready 后预热图片
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', preload);
+  } else {
+    preload();
+  }
+})();
+</script>
 <script>
 (function(){
   var o=document.getElementById('cube-map-overlay');
