@@ -260,6 +260,19 @@ var comment_c456ea59_6018_45ef_8bcc_211a24c627dc = {
 					"_docs": "反击比例",
 					"_data": "反击百分比"
 				},
+				"counterAttackThreshold": {
+					"_leaf": true,
+					"_type": "textarea",
+					"_docs": "蓄势反击比例",
+					"_data": "蓄势反击（特殊属性30）附加角色攻击的比例（如0.2代表20%），达到触发攻击次数后每回合生效"
+				},
+				"counterTriggerAtk": {
+					"_leaf": true,
+					"_type": "textarea",
+					"_range": "(thiseval==~~thiseval && thiseval>=0)||thiseval==null",
+					"_docs": "蓄势反击攻击力阈值",
+					"_data": "蓄势反击（特殊属性30）的触发门槛：角色攻击力达到该值（含）以上才触发；不填默认为0（即始终触发）"
+				},
 				"vampire": {
 					"_leaf": true,
 					"_type": "textarea",

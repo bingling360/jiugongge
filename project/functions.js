@@ -593,8 +593,13 @@ var functions_d6ad677b_427a_4623_b50f_a445a3b0ef8a =
 					return "怪物每次攻击对角色生命造成的实际伤害，有" + Math.floor((enemy.absorbValue || 0) * 100)
 						+ "%转化为自身生命；被护盾抵消的伤害不会回复。";
 				}, "#d45a9e"],
-				[48, "卸力", "防御力提升，提升值为角色攻击力的30%", "#c0ddbb"],
-			];
+			[48, "卸力", "防御力提升，提升值为角色攻击力的30%", "#c0ddbb"],
+			[30, "蓄势反击", function (enemy) {
+				var ratio = enemy.counterAttackThreshold != null ? enemy.counterAttackThreshold : (core.values.counterAttack || 0);
+				var atk = enemy.counterTriggerAtk != null ? enemy.counterTriggerAtk : 0;
+				return "当角色攻击力达到" + atk + "以上时，怪物每回合附加角色攻击的" + Math.floor(100 * ratio) + "%作为伤害，无视角色防御";
+			}, "#ff8844"],
+		];
 		},
 		"getEnemyInfo": function (enemy, hero, x, y, floorId) {
 			// 获得某个怪物变化后的数据；该函数将被伤害计算和怪物手册使用
@@ -754,6 +759,8 @@ var functions_d6ad677b_427a_4623_b50f_a445a3b0ef8a =
 			// 怪物的各项数据
 			// 对坚固模仿等处理扔到了脚本编辑-getEnemyInfo之中
 			var enemyInfo = core.enemys.getEnemyInfo(enemy, hero, x, y, floorId);
+			// 完整原始怪物对象（含 counterAttack / counterTriggerAtk 等自定义图块属性字段）
+			var rawEnemy = core.getEnemyValue(enemy, null, x, y, floorId);
 			var mon_hp = enemyInfo.hp,
 				mon_atk = enemyInfo.atk,
 				mon_def = enemyInfo.def,
@@ -803,10 +810,10 @@ var functions_d6ad677b_427a_4623_b50f_a445a3b0ef8a =
 			if (core.hasSpecial(mon_special, 5)) per_damage *= 3;
 			if (core.hasSpecial(mon_special, 6)) per_damage *= (enemy.n || 4);
 
-			// 每回合的反击伤害；反击是按照勇士的攻击次数来计算回合
-			var counterDamage = 0;
-			if (core.hasSpecial(mon_special, 8))
-				counterDamage += Math.floor((enemy.counterAttack || core.values.counterAttack) * hero_atk);
+		// 每回合的反击伤害；反击是按照勇士的攻击次数来计算回合
+		var counterDamage = 0;
+		if (core.hasSpecial(mon_special, 8))
+			counterDamage += Math.floor((rawEnemy.counterAttack != null ? rawEnemy.counterAttack : core.values.counterAttack) * hero_atk);
 
 			// 先攻
 			if (core.hasSpecial(mon_special, 1)) {
@@ -836,6 +843,13 @@ var functions_d6ad677b_427a_4623_b50f_a445a3b0ef8a =
 
 			// 勇士的攻击回合数；为怪物生命除以每回合伤害向上取整
 			var turn = Math.ceil(mon_hp / hero_per_damage);
+			// 蓄势反击（编号30）：当角色攻击力达到阈值 counterTriggerAtk 时，
+			// 每回合附加角色攻击的 counterAttackThreshold 比例作为伤害，无视角色防御
+			if (core.hasSpecial(mon_special, 30)) {
+				var triggerAtk = rawEnemy.counterTriggerAtk != null ? rawEnemy.counterTriggerAtk : 0;
+				if (hero_atk >= triggerAtk)
+					counterDamage += Math.floor((rawEnemy.counterAttackThreshold != null ? rawEnemy.counterAttackThreshold : core.values.counterAttack) * hero_atk);
+			}
 			if (core.hasSpecial(mon_special, 31)) {
 				var absorbResult = typeof CubeWorld != "undefined" && CubeWorld.simulateAbsorb ? CubeWorld.simulateAbsorb({
 					monsterHp: mon_hp,

@@ -1,6 +1,6 @@
 var enemys_fcae963b_31c9_42b4_b48c_bb48d09f3f80 = 
 {
-	"greenSlime": {"name":"绿头怪","hp":150,"atk":60,"def":13,"money":1,"exp":1,"point":0,"special":[]},
+	"greenSlime": {"name":"绿头怪","hp":150,"atk":60,"def":13,"money":1,"exp":1,"point":0,"special":[],"counterTriggerAtk":110,"counterAttackThreshold":0.5},
 	"redSlime": {"name":"红头怪","hp":200,"atk":65,"def":14,"money":2,"exp":2,"point":0,"special":[]},
 	"blackSlime": {"name":"青头怪","hp":400,"atk":70,"def":14,"money":3,"exp":3,"point":0,"special":0},
 	"slimelord": {"name":"怪王","hp":600,"atk":80,"def":16,"money":4,"exp":4,"point":0,"special":[]},
@@ -75,7 +75,7 @@ var enemys_fcae963b_31c9_42b4_b48c_bb48d09f3f80 =
 	"redKing": {"name":"红衣魔王","hp":0,"atk":0,"def":0,"money":0,"exp":0,"point":0,"special":0},
 	"blueKing": {"name":"白衣武士","hp":0,"atk":0,"def":0,"money":0,"exp":0,"point":0,"special":[]},
 	"keiskeiFairy": {"name":"铃兰花妖","hp":2500,"atk":130,"def":45,"money":30,"exp":30,"point":0,"special":[28]},
-	"tulipFairy": {"name":"郁金香花妖","hp":10000,"atk":135,"def":40,"money":0,"exp":0,"point":0,"special":[4,18,22,24,31,48],"repulse":50,"laser":50,"afterBattle":[{"type":"win","reason":"${core.getFlag('endingName', 0) || '普通'}"}],"zoneSquare":true,"absorbValue":0.1,"fixedDamage":5000},
+	"tulipFairy": {"name":"郁金香花妖","hp":10000,"atk":135,"def":40,"money":0,"exp":0,"point":0,"special":[4,18,22,24,31,48,30],"repulse":50,"laser":50,"afterBattle":[{"type":"win","reason":"${core.getFlag('endingName', 0) || '普通'}"}],"zoneSquare":true,"absorbValue":0.1,"fixedDamage":7500,"counterAttackThreshold":0.1,"counterTriggerAtk":110},
 	"xishiFairy": {"name":"吸噬花妖","hp":1000,"atk":60,"def":20,"money":10,"exp":10,"point":0,"special":[31],"absorbValue":0.2},
 	"purpleBowman": {"name":"高级弓兵","hp":0,"atk":0,"def":0,"money":0,"exp":0,"point":0,"special":0},
 	"bearDown": {"name":"熊出没","hp":0,"atk":0,"def":0,"money":0,"exp":0,"point":0,"special":[],"faceIds":{"down":"bearDown","left":"bearLeft","right":"bearRight","up":"bearUp"},"bigImage":"bear.png"},
