@@ -15,7 +15,7 @@
   #face-name { font-size: 22px; font-weight: 700; color: #f0f0f0; transition: color 0.2s; }
   #face-id { font-size: 11px; color: #444; background: #14141e; padding: 1px 8px; border-radius: 3px; font-family: monospace; }
   #thumbnail-container { flex: 1; display: flex; align-items: center; justify-content: center; padding: 14px; position: relative; min-height: 0; }
-  #thumbnail-canvas { border: 1px solid #222230; border-radius: 4px; image-rendering: pixelated; max-width: 100%; max-height: 100%; }
+  #thumbnail-canvas { border: 1px solid #222230; border-radius: 4px; image-rendering: pixelated; max-width: 100%; max-height: 100%; width: 512px; height: 512px; }
   #face-selector { padding: 8px 14px 10px; border-top: 1px solid #1a1a24; display: flex; gap: 4px; flex-wrap: wrap; background: #0c0c14; }
   .face-btn { flex: 1; min-width: 40px; padding: 4px 2px; font-size: 10px; background: #161620; color: #666; border: 1px solid #242430; border-radius: 3px; cursor: pointer; text-align: center; transition: all 0.15s; font-family: inherit; }
   .face-btn:hover { background: #242430; color: #bbb; }
@@ -80,7 +80,7 @@
       <span id="face-id">MT0</span>
     </div>
     <div id="thumbnail-container">
-      <canvas id="thumbnail-canvas" width="338" height="338"></canvas>
+      <canvas id="thumbnail-canvas" width="512" height="512"></canvas>
     </div>
     <div id="face-selector">
       <button data-face="MT0" class="face-btn active" onclick="window.selectFace('MT0')">正面</button>
@@ -200,7 +200,37 @@ function getRealtimeMap(core, fid, f) {
   return f ? f.map : null;
 }
 
-// 楼层背景图：作为 3D 模型立方体面与左侧缩略图的背景显示
+// 按楼层 images 字段裁剪绘制 bg 贴图（与游玩时 _drawFloorImage 同源，非平铺），
+// 画到真实像素尺寸的临时 ctx 上。仅使用查看器已加载的 floorBgImage 源。
+// 返回是否实际绘制了至少一张贴图。
+function drawFloorImagesBg(ctxReal, f, ox, oy, cell) {
+  var imgs = (f && f.images) || [];
+  if (!floorBgImage.complete || !floorBgImage.naturalWidth) return false;
+  var bgBase = (floorBgImage.src || "").split("/").pop().split("?")[0];
+  var drawn = false;
+  // floor_texture.jpg 以 32px/格 为基准（416 = 13×13 格），映射到目标 cell 分辨率，避免二次缩放模糊
+  var scale = (cell != null && cell > 0) ? cell / 32 : 1;
+  var OXX = ox || 0, OYY = oy || 0;
+  imgs.forEach(function (one) {
+    if (one.canvas && one.canvas !== "bg") return;
+    var src = one.name || "";
+    var base = src.split("/").pop().split("?")[0];
+    if (base && bgBase && base !== bgBase) return; // 来源非 floorBgImage，跳过
+    var w = one.w != null ? one.w : floorBgImage.naturalWidth;
+    var h = one.h != null ? one.h : floorBgImage.naturalHeight;
+    if (!(w > 0) || !(h > 0)) return;
+    var sx = one.sx || 0, sy = one.sy || 0;
+    var x = (one.x || 0) * scale + OXX, y = (one.y || 0) * scale + OYY;
+    var dw = w * scale, dh = h * scale;
+    try {
+      // 直接从 floorBgImage 原始尺寸裁到目标分辨率（一次缩放，保持清晰）
+      ctxReal.drawImage(floorBgImage, sx, sy, w, h, x, y, dw, dh);
+      drawn = true;
+    } catch (e) {}
+  });
+  return drawn;
+}
+
 var floorBgImage = new Image();
 floorBgImage.src = "project/images/floor_texture.jpg";
 floorBgImage.onload = function () {
@@ -371,46 +401,50 @@ function renderRealFloor(ctx, fid, f, cw, ch) {
   var map = getRealtimeMap(core, fid, f) || (f ? f.map : null);
   if (!map) { renderFallback(ctx, fid, f, cw, ch); return; }
   var mh = map.length, mw = map[0] ? map[0].length : 0;
-  var cell = Math.floor(Math.min(cw, ch) / Math.max(mw, mh));
+  // 直接用缩略图目标分辨率作为内部画布，避免「先缩到 32 再放大」的双程缩放模糊
+  var rb = document.createElement("canvas");
+  rb.width = cw; rb.height = ch;
+  var rctx = rb.getContext("2d");
+  rctx.imageSmoothingEnabled = false;
+  // 浮点 cell，使正方形地图精确铺满画布（消除边缘深色 padding）
+  var cell = Math.min(cw, ch) / Math.max(mw, mh);
   var ox = Math.floor((cw - mw * cell) / 2);
   var oy = Math.floor((ch - mh * cell) / 2);
 
-  var hasBg = floorBgImage.complete && floorBgImage.naturalWidth;
   ctx.clearRect(0, 0, cw, ch);
-  if (hasBg) {
-    ctx.fillStyle = ctx.createPattern(floorBgImage, "repeat");
-    ctx.fillRect(0, 0, cw, ch);
-  } else {
-    ctx.fillStyle = "#0a0a16";
-    ctx.fillRect(0, 0, cw, ch);
-  }
 
-  var groundId = f.defaultGround || "ground";
-  var groundInfo = core.getBlockInfo(groundId) || core.getBlockInfo(1);
+  // 按游戏 drawBg 顺序绘制：ground -> floor images -> events -> hero -> damage
+  // 1. 铺满地面（defaultGround）
+  var groundInfo = core.getBlockInfo(f.defaultGround || "ground") || core.getBlockInfo(1);
+  if (groundInfo) {
+    for (var y = 0; y < mh; y++) for (var x = 0; x < mw; x++) drawGround(rctx, groundInfo, ox + x * cell, oy + y * cell, cell);
+  } else { rctx.fillStyle = "#0a0a16"; rctx.fillRect(0, 0, rb.width, rb.height); }
 
+  // 2. 楼层 images 贴图（裁剪，非平铺）
+  drawFloorImagesBg(rctx, f, ox, oy, cell);
+
+  // 3. 事件层 blocks
   for (var y = 0; y < mh; y++) {
     for (var x = 0; x < mw; x++) {
-      var dx = ox + x * cell;
-      var dy = oy + y * cell;
       var id = map[y] ? map[y][x] : 0;
-      if (id) {
-        var info = core.getBlockInfo(id);
-        if (info) drawBlockBottom(ctx, info, dx, dy, cell);
-      } else if (!hasBg) {
-        if (groundInfo) drawGround(ctx, groundInfo, dx, dy, cell);
-        else { ctx.fillStyle = "#2a2a3a"; ctx.fillRect(dx, dy, cell, cell); }
-      }
+      if (!id) continue;
+      var info = core.getBlockInfo(id);
+      if (info) drawBlockBottom(rctx, info, ox + x * cell, oy + y * cell, cell);
     }
   }
 
-  // 玩家（仅当前所在楼层）
+  // 4. 玩家（仅当前所在楼层）
   if (core.status && core.status.floorId === fid && core.status.hero) {
     var hx = core.status.hero.loc.x, hy = core.status.hero.loc.y;
-    drawHero(ctx, core, ox + hx * cell, oy + hy * cell, cell);
+    drawHero(rctx, core, ox + hx * cell, oy + hy * cell, cell);
   }
 
-  // 伤害显示叠加（怪物伤害 + 领域/阻击/激光）
-  drawDamageOverlay(ctx, fid, cell, ox, oy);
+  // 5. 伤害显示叠加（怪物伤害 + 领域/阻击/激光）
+  drawDamageOverlay(rctx, fid, cell, ox, oy);
+
+  // 直接绘制（rb 已是目标分辨率，无需再缩放）
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(rb, 0, 0);
 
   drawLabel(ctx, fid, cw, ch);
 }
@@ -437,7 +471,8 @@ function renderFallback(ctx, fid, f, cw, ch) {
   }
   var map = f.map;
   var mh = map.length, mw = map[0] ? map[0].length : 0;
-  var cell = Math.floor(Math.min(cw, ch) / Math.max(mw, mh));
+  // 浮点 cell，使正方形地图精确铺满画布（消除边缘深色 padding）
+  var cell = Math.min(cw, ch) / Math.max(mw, mh);
   var ox = Math.floor((cw - mw * cell) / 2);
   var oy = Math.floor((ch - mh * cell) / 2);
   for (var y = 0; y < mh; y++) {
@@ -569,54 +604,64 @@ var faceConfigs = [
 ];
 
 function buildFaceTexture(fid) {
-  var S = 1024; // 面贴图分辨率：1024 在清晰度与性能间最平衡，避免 2048 在刷新地图时拖慢游戏
+  var S = 1024; // 面贴图分辨率：回到旧版 1024，开图时生成一次，流畅度最佳
   var c = document.createElement("canvas");
   c.width = S; c.height = S;
   var ctx = c.getContext("2d");
   ctx.imageSmoothingEnabled = false;
   var f = window.main.floors[fid];
   var core = getParentCore();
-  var map = getRealtimeMap(core, fid, f) || (f ? f.map : null);
-  var hasBg = floorBgImage.complete && floorBgImage.naturalWidth;
-  // 背景层：floor_texture.jpg（平铺）
-  if (hasBg) {
-    ctx.fillStyle = ctx.createPattern(floorBgImage, "repeat");
-    ctx.fillRect(0, 0, S, S);
-  } else {
-    ctx.fillStyle = "#080810";
-    ctx.fillRect(0, 0, S, S);
+  if (!f || !core) { ctx.fillStyle = "#080810"; ctx.fillRect(0, 0, S, S); return texFromCanvas(c); }
+
+  var mw = f.width || 1, mh = f.height || 1;
+  var map = getRealtimeMap(core, fid, f) || f.map || null;
+  // 浮点 cell，使正方形地图精确铺满整个面（消除棱处深色 padding 形成的黑缝）
+  var cell = S / Math.max(mw, mh);
+  var ox = Math.floor((S - mw * cell) / 2);
+  var oy = Math.floor((S - mh * cell) / 2);
+
+  // 直接用 S(2048) 为目标分辨率绘制，避免「先缩到 32px 再放大」的双程缩放模糊
+  var rctx = ctx;
+  // 背景底
+  rctx.fillStyle = "#080810"; rctx.fillRect(0, 0, S, S);
+
+  // 1. 铺满地面（defaultGround）
+  var groundInfo = core.getBlockInfo(f.defaultGround || "ground") || core.getBlockInfo(1);
+  if (groundInfo) {
+    for (var y = 0; y < mh; y++) for (var x = 0; x < mw; x++) drawGround(rctx, groundInfo, ox + x * cell, oy + y * cell, cell);
   }
+
+  // 2. 楼层 images 贴图（裁剪，非平铺），从原始尺寸一次性映射
+  drawFloorImagesBg(rctx, f, ox, oy, cell);
+
+  // 3. 事件层 blocks
   if (map) {
-    var mh = map.length, mw = map[0] ? map[0].length : 0;
-    var cell = S / Math.max(mw, mh);
-    var groundInfo = core ? (core.getBlockInfo(f && f.defaultGround || "ground") || core.getBlockInfo(1)) : null;
     for (var y = 0; y < mh; y++) {
       for (var x = 0; x < mw; x++) {
-        var dx = Math.floor(x * cell), dy = Math.floor(y * cell), cs = Math.ceil(cell);
         var id = map[y] ? map[y][x] : 0;
-        if (id) {
-          var info = core ? core.getBlockInfo(id) : null;
-          if (info) drawBlockBottom(ctx, info, dx, dy, cs);
-          else if (!hasBg) { ctx.fillStyle = bc(id); ctx.fillRect(dx, dy, cs, cs); }
-        } else if (!hasBg) {
-          // 无背景图时铺地面
-          if (groundInfo) drawGround(ctx, groundInfo, dx, dy, cs);
-          else { ctx.fillStyle = "#1a1a2e"; ctx.fillRect(dx, dy, cs, cs); }
-        }
+        if (!id) continue;
+        var info = core.getBlockInfo(id);
+        if (info) drawBlockBottom(rctx, info, ox + x * cell, oy + y * cell, cell);
+        else { rctx.fillStyle = bc(id); rctx.fillRect(ox + x * cell, oy + y * cell, cell, cell); }
       }
     }
-    // 玩家（仅其所在楼层）
-    if (core && core.status && core.status.floorId === fid && core.status.hero) {
-      var hx = core.status.hero.loc.x, hy = core.status.hero.loc.y;
-      drawHero(ctx, core, Math.floor(hx * cell), Math.floor(hy * cell), Math.ceil(cell));
-    }
-    // 伤害显示叠加（怪物伤害 + 领域/阻击/激光）
-    if (core) drawDamageOverlay(ctx, fid, cell, 0, 0);
-    ctx.strokeStyle = "rgba(255,255,255,0.05)";
-    ctx.lineWidth = 1;
-    for (var gx = 0; gx <= mw; gx++) { ctx.beginPath(); ctx.moveTo(Math.floor(gx * cell), 0); ctx.lineTo(Math.floor(gx * cell), S); ctx.stroke(); }
-    for (var gy = 0; gy <= mh; gy++) { ctx.beginPath(); ctx.moveTo(0, Math.floor(gy * cell)); ctx.lineTo(S, Math.floor(gy * cell)); ctx.stroke(); }
   }
+
+  // 4. 玩家（仅其所在楼层）
+  if (core.status && core.status.floorId === fid && core.status.hero) {
+    var hx = core.status.hero.loc.x, hy = core.status.hero.loc.y;
+    drawHero(rctx, core, ox + hx * cell, oy + hy * cell, cell);
+  }
+
+  // 5. 伤害显示叠加（怪物伤害 + 领域/阻击/激光）
+  drawDamageOverlay(rctx, fid, cell, ox, oy);
+
+  // 6. 网格线
+  ctx.strokeStyle = "rgba(255,255,255,0.05)";
+  ctx.lineWidth = 1;
+  for (var gx = 0; gx <= mw; gx++) { ctx.beginPath(); ctx.moveTo(Math.floor(ox + gx * cell), oy); ctx.lineTo(Math.floor(ox + gx * cell), oy + mh * cell); ctx.stroke(); }
+  for (var gy = 0; gy <= mh; gy++) { ctx.beginPath(); ctx.moveTo(ox, Math.floor(oy + gy * cell)); ctx.lineTo(ox + mw * cell, Math.floor(oy + gy * cell)); ctx.stroke(); }
+
   ctx.fillStyle = "#d0d8e8";
   ctx.font = 'bold ' + (S * 0.066) + 'px "PingFang SC","Microsoft YaHei",sans-serif';
   ctx.textAlign = "center"; ctx.textBaseline = "middle";
@@ -634,9 +679,10 @@ function buildFaceTexture(fid) {
   satCtx.drawImage(c, 0, 0);
   c = satCanvas;
   var tex = new THREE.CanvasTexture(c);
-  tex.minFilter = THREE.LinearMipmapLinearFilter;
-  tex.magFilter = THREE.LinearFilter;
-  tex.generateMipmaps = true;
+  // 关闭 mipmap 避免纹理边缘被平均拉暗形成暗边；min 用 Linear 保持缩小平滑
+  tex.minFilter = THREE.LinearFilter;
+  tex.magFilter = THREE.NearestFilter;
+  tex.generateMipmaps = false;
   tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
   tex.needsUpdate = true;
   return tex;
